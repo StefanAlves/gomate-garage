@@ -1,0 +1,20 @@
+import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
+import { chargeListSearchDefaults, chargeListSearchSchema } from '~/lib/schemas'
+import { garageToday } from '~/lib/period'
+import { listCharges, listPickerOptions } from '~/server/fleet.functions'
+import { ChargesPage } from '~/components/charges-page'
+
+export const Route = createFileRoute('/fleet/fines')({
+  validateSearch: chargeListSearchSchema,
+  search: { middlewares: [stripSearchParams(chargeListSearchDefaults)] },
+  loaderDeps: ({ search }) => search,
+  loader: async ({ deps }) => {
+    const [data, options] = await Promise.all([listCharges({ data: { ...deps, kind: 'fine' } }), listPickerOptions()])
+    return { data, options, today: garageToday() }
+  },
+  head: () => ({ meta: [{ title: 'Fines · Garage' }] }),
+  component: function Fines() {
+    const { data, options, today } = Route.useLoaderData()
+    return <ChargesPage kind="fine" from="/fleet/fines" data={data} search={Route.useSearch()} options={options} today={today} />
+  },
+})

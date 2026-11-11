@@ -1,0 +1,253 @@
+import '@tanstack/react-start/server-only'
+import { mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+
+// Single SQLite connection for the server process. Server-only: the build
+// fails if any client code imports this module.
+
+const file = resolve(process.env.DATABASE_PATH ?? 'data/garage.db')
+mkdirSync(dirname(file), { recursive: true })
+
+export const db = new DatabaseSync(file)
+db.exec(`PRAGMA journal_mode = WAL;`)
+
+const now = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+
+/*
+ * Schema migrations, tracked with PRAGMA user_version. Each entry runs once,
+ * in order, inside a transaction. Never edit a shipped migration; add a new one.
+ */
+const migrations: string[] = [
+  // 1: original customer + car registry.
+  `
+  CREATE TABLE IF NOT EXISTS customers (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL,
+    phone      TEXT NOT NULL,
+    email      TEXT,
+    tax_id     TEXT,
+    address    TEXT,
+    notes      TEXT,
+    created_at TEXT NOT NULL DEFAULT (${now}),
+    updated_at TEXT NOT NULL DEFAULT (${now})
+  );
+  CREATE TABLE IF NOT EXISTS cars (
+    id          INTEGER PRIMARY KEY,
+    plate       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    make        TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    year        INTEGER,
+    color       TEXT,
+    vin         TEXT UNIQUE,
+    mileage_km  INTEGER,
+    customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    notes       TEXT,
+    created_at  TEXT NOT NULL DEFAULT (${now}),
+    updated_at  TEXT NOT NULL DEFAULT (${now})
+  );
+  `,
+
+  // 2: full customer profile + vehicle specs; a car's owner becomes optional
+  //    (NULL = owned by the business). SQLite can't change columns in place,
+  //    so both tables are rebuilt and the existing rows copied across.
+  `
+  CREATE TABLE customers_v2 (
+    id                INTEGER PRIMARY KEY,
+    first_name        TEXT NOT NULL,
+    last_name         TEXT,
+    company           TEXT,
+    tax_id            TEXT,
+    email             TEXT,
+    phone             TEXT NOT NULL,
+    landline          TEXT,
+    street            TEXT,
+    suburb            TEXT,
+    state             TEXT,
+    postcode          TEXT,
+    newsletter_opt_in INTEGER NOT NULL DEFAULT 0,
+    marketing_opt_in  INTEGER NOT NULL DEFAULT 0,
+    preferred_contact TEXT NOT NULL DEFAULT '',  -- comma-separated CONTACT_METHODS
+    tags              TEXT NOT NULL DEFAULT '',  -- comma-separated, lowercase
+    licence_number    TEXT,
+    licence_expiry    TEXT,                      -- YYYY-MM-DD
+    passport_number   TEXT,
+    notes             TEXT,
+    created_at        TEXT NOT NULL DEFAULT (${now}),
+    updated_at        TEXT NOT NULL DEFAULT (${now})
+  );
+  INSERT INTO customers_v2 (id, first_name, last_name, tax_id, email, phone, street, notes, created_at, updated_at)
+  SELECT id,
+         CASE WHEN instr(trim(name), ' ') > 0 THEN substr(trim(name), 1, instr(trim(name), ' ') - 1) ELSE trim(name) END,
+         CASE WHEN instr(trim(name), ' ') > 0 THEN trim(substr(trim(name), instr(trim(name), ' ') + 1)) END,
+         tax_id, email, phone, address, notes, created_at, updated_at
+  FROM customers;
+
+  CREATE TABLE cars_v2 (
+    id                     INTEGER PRIMARY KEY,
+    status                 TEXT NOT NULL DEFAULT 'ready',
+    customer_id            INTEGER REFERENCES customers(id) ON DELETE RESTRICT,  -- NULL = business-owned
+    plate                  TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    make                   TEXT NOT NULL,
+    model                  TEXT NOT NULL,
+    variant                TEXT,
+    year                   INTEGER,
+    color                  TEXT,
+    vin                    TEXT UNIQUE,
+    engine_number          TEXT,
+    build_date             TEXT,     -- YYYY-MM
+    compliance_date        TEXT,     -- YYYY-MM
+    engine_type            TEXT,
+    cylinders              INTEGER,
+    fuel_type              TEXT,
+    transmission           TEXT,
+    body_style             TEXT,
+    radio_pin              TEXT,
+    mileage_km             INTEGER,
+    next_service_date      TEXT,
+    next_service_km        INTEGER,
+    next_transmission_date TEXT,
+    next_transmission_km   INTEGER,
+    rego_expiry            TEXT,
+    insurance_provider     TEXT,
+    insurance_policy       TEXT,
+    insurance_expiry       TEXT,
+    ppsr_checked           INTEGER NOT NULL DEFAULT 0,
+    written_off            INTEGER NOT NULL DEFAULT 0,
+    notes                  TEXT,
+    created_at             TEXT NOT NULL DEFAULT (${now}),
+    updated_at             TEXT NOT NULL DEFAULT (${now})
+  );
+  INSERT INTO cars_v2 (id, customer_id, plate, make, model, year, color, vin, mileage_km, notes, created_at, updated_at)
+  SELECT id, customer_id, plate, make, model, year, color, vin, mileage_km, notes, created_at, updated_at FROM cars;
+
+  DROP TABLE cars;
+  DROP TABLE customers;
+  ALTER TABLE customers_v2 RENAME TO customers;
+  ALTER TABLE cars_v2 RENAME TO cars;
+
+  CREATE INDEX cars_customer_idx ON cars(customer_id);
+  CREATE INDEX cars_created_idx ON cars(created_at);
+  CREATE INDEX customers_name_idx ON customers(first_name COLLATE NOCASE, last_name COLLATE NOCASE);
+  CREATE INDEX customers_created_idx ON customers(created_at);
+  `,
+
+  // 3: fleet section. Car statuses become GoMate's stock lifecycle
+  //    (preparation → ready → out → sold / returned) with sale / rent listing
+  //    as separate flags; adds fines & tolls (charges) and a per-car money ledger.
+  //    Money is stored as integer cents.
+  `
+  ALTER TABLE cars ADD COLUMN for_rent            INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE cars ADD COLUMN weekly_rate_cents   INTEGER;
+  ALTER TABLE cars ADD COLUMN for_sale            INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE cars ADD COLUMN asking_price_cents  INTEGER;
+  ALTER TABLE cars ADD COLUMN min_price_cents     INTEGER;
+  ALTER TABLE cars ADD COLUMN listing_description TEXT;
+  ALTER TABLE cars ADD COLUMN features            TEXT NOT NULL DEFAULT '';  -- comma-separated CAR_FEATURES
+
+  UPDATE cars SET for_sale = 1 WHERE status = 'for_sale';
+  UPDATE cars SET status = CASE status
+    WHEN 'in_service' THEN 'preparation'
+    WHEN 'off_road'   THEN 'preparation'
+    WHEN 'rented'     THEN 'out'
+    WHEN 'for_sale'   THEN 'ready'
+    ELSE status END;
+
+  CREATE TABLE charges (
+    id                INTEGER PRIMARY KEY,
+    kind              TEXT NOT NULL CHECK (kind IN ('fine', 'toll')),
+    car_id            INTEGER REFERENCES cars(id) ON DELETE RESTRICT,       -- NULL = vehicle unknown
+    customer_id       INTEGER REFERENCES customers(id) ON DELETE RESTRICT,  -- NULL = unknown / business
+    incurred_on       TEXT NOT NULL,   -- offence or travel date, YYYY-MM-DD
+    due_on            TEXT,
+    offence_type      TEXT,            -- fines only
+    notice_number     TEXT,
+    amount_cents      INTEGER NOT NULL DEFAULT 0 CHECK (amount_cents >= 0),
+    payment_reference TEXT,
+    status            TEXT NOT NULL DEFAULT 'not_paid',
+    note              TEXT,
+    created_at        TEXT NOT NULL DEFAULT (${now}),
+    updated_at        TEXT NOT NULL DEFAULT (${now})
+  );
+  CREATE INDEX charges_kind_date_idx ON charges(kind, incurred_on);
+  CREATE INDEX charges_car_idx ON charges(car_id);
+  CREATE INDEX charges_customer_idx ON charges(customer_id);
+
+  CREATE TABLE transactions (
+    id           INTEGER PRIMARY KEY,
+    car_id       INTEGER NOT NULL REFERENCES cars(id) ON DELETE RESTRICT,
+    customer_id  INTEGER REFERENCES customers(id) ON DELETE RESTRICT,
+    occurred_on  TEXT NOT NULL,        -- YYYY-MM-DD
+    category     TEXT NOT NULL,        -- TRANSACTION_CATEGORIES
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),  -- direction comes from the category
+    method       TEXT,                 -- PAYMENT_METHODS
+    notes        TEXT,
+    created_at   TEXT NOT NULL DEFAULT (${now}),
+    updated_at   TEXT NOT NULL DEFAULT (${now})
+  );
+  CREATE INDEX transactions_date_idx ON transactions(occurred_on);
+  CREATE INDEX transactions_car_idx ON transactions(car_id);
+  CREATE INDEX transactions_customer_idx ON transactions(customer_id);
+  `,
+
+  // 4: photos of a customer's ID documents. One image per slot; the file
+  //    itself lives on disk (see documents.server.ts), not in the database.
+  `
+  CREATE TABLE customer_documents (
+    id            INTEGER PRIMARY KEY,
+    customer_id   INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    kind          TEXT NOT NULL CHECK (kind IN ('licence_front', 'licence_back', 'passport')),
+    file_name     TEXT NOT NULL UNIQUE,  -- random name under the uploads folder
+    mime_type     TEXT NOT NULL,
+    size_bytes    INTEGER NOT NULL,
+    original_name TEXT,
+    created_at    TEXT NOT NULL DEFAULT (${now}),
+    UNIQUE (customer_id, kind)
+  );
+  `,
+]
+
+/** Cents from a dollar amount validated by the shared schemas. */
+export const toCents = (dollars: number | null) => (dollars == null ? null : Math.round(dollars * 100))
+
+export { now as sqlNow }
+
+function migrate() {
+  const { user_version: current } = db.prepare('PRAGMA user_version').get() as { user_version: number }
+  if (current >= migrations.length) return
+  // Table rebuilds drop tables that others reference, so FK checks are
+  // switched off for the duration and verified before committing.
+  db.exec('PRAGMA foreign_keys = OFF')
+  try {
+    for (let v = current; v < migrations.length; v++) {
+      db.exec('BEGIN')
+      try {
+        db.exec(migrations[v]!)
+        const broken = db.prepare('PRAGMA foreign_key_check').all()
+        if (broken.length) throw new Error(`Migration ${v + 1} left ${broken.length} broken foreign keys`)
+        db.exec(`PRAGMA user_version = ${v + 1}`)
+        db.exec('COMMIT')
+      } catch (err) {
+        db.exec('ROLLBACK')
+        throw err
+      }
+    }
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON')
+  }
+}
+migrate()
+
+/** True when a write failed on a UNIQUE constraint for `table.column`. */
+export function isUniqueViolation(err: unknown, column: string) {
+  return err instanceof Error && /UNIQUE constraint failed/.test(err.message) && err.message.includes(column)
+}
+
+export function isForeignKeyViolation(err: unknown) {
+  return err instanceof Error && /FOREIGN KEY constraint failed/.test(err.message)
+}
+
+/** SQL LIKE pattern for a free-text search, with wildcards escaped (use ESCAPE '\\'). */
+export function likePattern(q: string | undefined) {
+  return q ? `%${q.replace(/[%_\\]/g, '\\$&')}%` : null
+}
