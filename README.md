@@ -22,25 +22,29 @@ Structure modelled on the GoMate back office (customers and vehicles).
 |---|---|
 | `/customers` | Table: name/company, email, mobile (+ WhatsApp link), location, created. Search (name, company, phone, email, ABN, suburb), sort, page size |
 | `/customers/new` | Quick create: personal + contact details |
-| `/customers/:id` | Tabs (`?tab=`): **Contact** (full profile: address, marketing opt-ins, preferred contact, tags, licence/passport), and placeholders for Bookings, Invoices, Comms, Rentals |
+| `/customers/:id` | Tabs (`?tab=`): **Contact** (full profile: address, marketing opt-ins, preferred contact, tags, licence/passport), **Rentals** (active first, Start rental), and placeholders for Bookings, Invoices, Comms |
 | `/cars` | Table: vehicle, rego, colour, purpose, status. Search (rego, make, model, VIN), sort, purpose and status filters, page size |
 | `/cars/new` | Quick create: purpose (Rental car or Sale car, fixed), status (Preparation or Ready), basic details |
-| `/cars/:id` | Purpose and status badges, maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (Preparation ↔ Ready, weekly rent or asking / minimum price by purpose, odometer, description, features, compliance + financial summary), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Vehicle history, Reminders, Invoices |
+| `/cars/:id` | Purpose and status badges, Start rental (Ready rental cars) or a link to the active rental, maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (Preparation ↔ Ready, weekly rent or asking / minimum price by purpose, odometer, description, features, compliance + financial summary), **Rentals** (rental cars only), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Vehicle history, Reminders, Invoices |
 | `/fleet` | Fleet overview (GoMate's "Cars" section): income / P&L / ROI tiles by period, cars per stock status, unpaid fines & tolls, rego and insurance due in 30 days |
 | `/fleet/stock` | Cars as a **board** (Preparation, Ready, Rented, Under finance, Sold) or a **table** with prices and per-car P&L. Filter by purpose (columns follow it), search, sort (longest in stock, highest value, rego) |
-| `/fleet/fines`, `/fleet/tolls` | Fines and tolls: date, rego, customer, (offence), notice #, amount, due date, status (Not paid, Transferred, Business paid, Paid by renter). Inline add / edit, filters, running total |
-| `/fleet/transactions` | Per-car money ledger: initial investment, expense, rental / sale income, bond received / returned. Tiles, filters (period, vehicle, category, method), inline add / edit, "Add bond", CSV export |
-| `/fleet/rentals`, `/fleet/leads`, `/fleet/invoices` | Placeholders describing the GoMate modules still to build |
+| `/fleet/fines`, `/fleet/tolls` | Fines and tolls: date, rego, customer, (offence), notice #, amount, due date, status (Not paid, Transferred, Business paid, Paid by customer). Inline add / edit, filters, running total |
+| `/fleet/transactions` | Per-car money ledger: initial investment, expense, rental / sale income, bond received / returned / kept. Tiles, filters (period, vehicle, category, method), inline add / edit, "Add bond", CSV export |
+| `/fleet/rentals` | Rentals with what each customer owes, weeks behind and next due date. Filters (active / returned / all, behind on payments), search, sort by most owed |
+| `/rentals/new` | Start a rental from a Ready rental car (`?car=`) or a customer (`?customer=`), or create a walk-in customer inline. Start date, weekly rent, bond received. Warns when no licence photo is on file |
+| `/rentals/:id` | Summary tiles (rent, arrears / owed, paid, next due, bond held), record payment, change rent from a date, Return with bond settlement (arrears, fines and tolls from the rental period, damage → refund or shortfall), payments, rent history |
+| `/fleet/leads`, `/fleet/invoices` | Placeholders describing the GoMate modules still to build |
 
 ## Rules
 
-Domain language lives in `GLOSSARY.md`. The business rents and sells its own cars only: see `docs/adr/0001-garage-owns-every-car.md`. The rules below describe the code as it is today. Still to build: `SPECs/rentals.md`, `SPECs/finance-sales.md` and `SPECs/maintenance.md`; open points are in `SPECs/open-questions.md`.
+Domain language lives in `GLOSSARY.md`. The business rents and sells its own cars only: see `docs/adr/0001-garage-owns-every-car.md`. The rules below describe the code as it is today. Still to build: `SPECs/finance-sales.md` and `SPECs/maintenance.md`; open points are in `SPECs/open-questions.md`.
 
 - Every car belongs to the garage. A car has a fixed purpose, Rental car or Sale car, chosen when it's added and never changed.
 - Plates are stored in uppercase and must be unique. VINs, when given, must be 17 characters and unique.
-- A customer with fines, tolls or transactions can't be deleted. The same goes for a car with fines, tolls or transactions.
-- Car status follows the purpose. Rental car: Preparation → Ready → Rented → (Return) → Preparation. Sale car: Preparation → Ready → Under finance → Sold. Staff only move a car between Preparation and Ready; the other statuses will be set by Rentals and Finance Sales. Rental cars have a weekly rent; sale cars an asking and minimum price.
-- Money is stored as integer cents. Ledger amounts are positive; the category gives the direction. P&L = rental + sale income − investment − expenses; ROI = P&L ÷ (investment + expenses). Bonds are tracked separately ("bond held") and never count as income.
+- A customer with rentals, fines, tolls or transactions can't be deleted. The same goes for a car.
+- Car status follows the purpose. Rental car: Preparation → Ready → Rented → (Return) → Preparation. Sale car: Preparation → Ready → Under finance → Sold. Staff only move a car between Preparation and Ready; Starting a Rental sets Rented and the Return sets Preparation; Finance Sales will set the sale statuses. Rental cars have a weekly rent; sale cars an asking and minimum price.
+- Money is stored as integer cents. Ledger amounts are positive; the category gives the direction. P&L = rental + sale income − investment − expenses; ROI = P&L ÷ (investment + expenses). Bonds are tracked separately ("bond held"); only the part kept at a Rental's Return (`bond_applied`) counts as income.
+- Rentals: Rent is weekly in advance; week *k* is due on start + 7k at the rate in effect that day. Once returned, no new week falls due (a week due on the return date doesn't count), and nothing is pro-rated. Owed = Rent due + non-rent deductions − Rent paid − Bond kept: the Arrears while active, the unpaid shortfall after Return. Rent payments are `rental_income` ledger rows linked by `rental_id`. A rental car has at most one active Rental. Arrears at Return are always deducted (no waiver yet).
 - Period filters use the garage's day in Australia/Melbourne; weeks start on Monday.
 - Build and compliance dates are typed as MM/YYYY and stored as YYYY-MM. Other dates are YYYY-MM-DD.
 
@@ -52,7 +56,8 @@ Domain language lives in `GLOSSARY.md`. The business rents and sells its own car
 
 - `src/lib/schemas.ts`: Zod schemas shared by browser form validation and server validation.
 - `src/server/*.server.ts`: SQL. Server-only; the build fails if client code imports it.
-- `src/server/garage.functions.ts`: typed server functions, the only bridge from UI to data.
+- `src/server/*.functions.ts`: typed server functions, the only bridge from UI to data.
+- `src/lib/rent.ts`: pure Rent / Arrears / settlement arithmetic.
 - `src/routes/`: file-based routes.
 - `src/components/`: forms and list toolbar.
 

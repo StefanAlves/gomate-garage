@@ -1,6 +1,6 @@
 # Rentals
 
-Status: ready-for-agent
+Status: done (2026-11-12, branch `rentals`)
 Date: 2026-11-12
 Related: GLOSSARY.md, SPECs/car-purpose-and-ownership.md (prerequisite). Replaces the `/fleet/rentals` placeholder and the customer page's Rentals placeholder.
 
@@ -97,6 +97,14 @@ A **Rental** is an open-ended arrangement: a Customer takes a Rental Car, pays a
 - Pure tests for Rent due to date: a Rent change mid-way, a payment exactly on the due day, Return mid-week, a start date in the future.
 - Data module tests: you can't start a Rental on a non-Ready or Sale Car, or on a Car that already has an active Rental. Return writes the expected transactions, updates the charges and moves the Car.
 - Settlement cases: refund, exact zero, and shortfall.
+
+## Implementation notes
+
+- Defaults taken (2026-11-12): a licence photo isn't required to start a Rental (the form warns); no additional drivers, the renting Customer is responsible for fines and tolls.
+- Arrears at Return are worked out by the server and always deducted; they can't be waived or edited yet.
+- A week due on the Return date doesn't fall due; the first week is always due.
+- After Return, payments towards a shortfall are recorded on the Rental as `rental_income`.
+- Suggested fines and tolls include ones on the Car in the Rental period with no Customer set; settling them assigns them to the Customer.
 
 ## Out of Scope
 

@@ -73,3 +73,16 @@ describe('migration 5: car purpose', () => {
     expect(() => insert('sale', 'under_finance')).not.toThrow()
   })
 })
+
+describe('migration 6: rentals', () => {
+  it('renames paid_by_renter to paid_by_customer and leaves other statuses alone', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db, 5)
+    db.exec(`INSERT INTO charges (id, kind, incurred_on, status) VALUES
+      (1, 'fine', '2026-01-01', 'paid_by_renter'), (2, 'toll', '2026-01-01', 'not_paid')`)
+    migrate(db, 6)
+    expect(db.prepare('SELECT id, status FROM charges ORDER BY id').all().map((r) => ({ ...r })))
+      .toEqual([{ id: 1, status: 'paid_by_customer' }, { id: 2, status: 'not_paid' }])
+    expect(db.prepare('SELECT rental_id FROM transactions').all()).toEqual([])
+  })
+})

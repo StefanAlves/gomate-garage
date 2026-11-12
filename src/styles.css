@@ -168,10 +168,10 @@ main { max-width: 1120px; }
 .badge.purpose-sale { color: #7a3fc2; }
 .badge.charge-not_paid { color: var(--urgent); }
 .badge.charge-transferred { color: #1d5fbf; }
-.badge.charge-business_paid, .badge.charge-paid_by_renter { color: #128c4a; }
+.badge.charge-business_paid, .badge.charge-paid_by_customer { color: #128c4a; }
 .category { font-weight: 600; font-size: .85rem; }
 .cat-rental_income, .cat-sale_income { color: #128c4a; }
-.cat-bond_received, .cat-bond_returned { color: #6d4bd1; }
+.cat-bond_received, .cat-bond_returned, .cat-bond_applied { color: #6d4bd1; }
 .cat-initial_investment { color: #1d5fbf; }
 .cat-expense { color: #c26a00; }
 button.small, .data-table button { padding: .2rem .55rem; font-size: .8rem; }
@@ -192,3 +192,13 @@ button.small, .data-table button { padding: .2rem .55rem; font-size: .8rem; }
 .doc-empty:hover { border-color: var(--accent); }
 .doc-slot button, .doc-slot .button { padding: .3rem .65rem; font-size: .85rem; cursor: pointer; }
 label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
+
+/* Rentals */
+.badge.rental-active { color: #1d5fbf; }
+.badge.rental-returned { color: var(--muted); }
+.notice.warn { border-color: #c26a00; color: #8a4b00; }
+.settlement { display: grid; grid-template-columns: 1fr auto; gap: .35rem 1rem; max-width: 28rem; }
+.settlement .total { font-weight: 600; border-top: 1px solid var(--border); padding-top: .35rem; }
+.deduction-row { display: grid; grid-template-columns: 8rem 1fr 8rem auto; gap: .5rem; align-items: end; }
+@media (max-width: 640px) { .deduction-row { grid-template-columns: 1fr 1fr; } }
+.contents { display: contents; }

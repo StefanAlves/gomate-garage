@@ -271,6 +271,52 @@ export const migrations: string[] = [
   CREATE INDEX cars_created_idx ON cars(created_at);
   CREATE INDEX cars_purpose_status_idx ON cars(purpose, status);
   `,
+
+  // 6: Rentals (SPECs/rentals.md). A Rental ties a Customer to a Rental car
+  //    with a Bond and a weekly Rent schedule; Rent and Bond money stays in the
+  //    transactions ledger, linked by rental_id. `paid_by_renter` becomes
+  //    `paid_by_customer` because Finance Sales use it too.
+  `
+  CREATE TABLE rentals (
+    id            INTEGER PRIMARY KEY,
+    customer_id   INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    car_id        INTEGER NOT NULL REFERENCES cars(id) ON DELETE RESTRICT,
+    start_date    TEXT NOT NULL,     -- YYYY-MM-DD, the first week's due date
+    bond_cents    INTEGER NOT NULL DEFAULT 0 CHECK (bond_cents >= 0),
+    status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'returned')),
+    returned_on   TEXT,
+    return_reason TEXT,
+    notes         TEXT,
+    created_at    TEXT NOT NULL DEFAULT (${now}),
+    updated_at    TEXT NOT NULL DEFAULT (${now}),
+    CHECK ((status = 'active') = (returned_on IS NULL))
+  );
+  CREATE UNIQUE INDEX rentals_active_car_idx ON rentals(car_id) WHERE status = 'active';
+  CREATE INDEX rentals_customer_idx ON rentals(customer_id);
+
+  CREATE TABLE rental_rent_rates (
+    id             INTEGER PRIMARY KEY,
+    rental_id      INTEGER NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+    effective_from TEXT NOT NULL,    -- YYYY-MM-DD
+    weekly_cents   INTEGER NOT NULL CHECK (weekly_cents > 0),
+    UNIQUE (rental_id, effective_from)
+  );
+
+  CREATE TABLE rental_deductions (
+    id           INTEGER PRIMARY KEY,
+    rental_id    INTEGER NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL CHECK (kind IN ('rent_arrears', 'fine', 'toll', 'damage', 'other')),
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    description  TEXT NOT NULL,
+    charge_id    INTEGER REFERENCES charges(id) ON DELETE SET NULL
+  );
+  CREATE INDEX rental_deductions_rental_idx ON rental_deductions(rental_id);
+
+  ALTER TABLE transactions ADD COLUMN rental_id INTEGER REFERENCES rentals(id) ON DELETE RESTRICT;
+  CREATE INDEX transactions_rental_idx ON transactions(rental_id);
+
+  UPDATE charges SET status = 'paid_by_customer' WHERE status = 'paid_by_renter';
+  `,
 ]
 
 /** Runs every migration after the database's user_version, up to `target` (default: all). */

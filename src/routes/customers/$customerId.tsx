@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { customerTabSearchSchema, idSchema, type CUSTOMER_TABS } from '~/lib/schemas'
 import { customerName, formatDate, whatsappUrl } from '~/lib/format'
 import { deleteCustomer, getCustomer, updateCustomer } from '~/server/garage.functions'
+import { rentalsForCustomer } from '~/server/rentals.functions'
+import { RentalTable } from '~/components/rental-table'
 import { CustomerForm } from '~/components/customer-form'
 import { CustomerDocuments } from '~/components/customer-documents'
 import { DeleteButton, FormError } from '~/components/form'
@@ -14,10 +16,11 @@ type TabKey = (typeof CUSTOMER_TABS)[number]
 export const Route = createFileRoute('/customers/$customerId')({
   validateSearch: customerTabSearchSchema,
   search: { middlewares: [stripSearchParams({ tab: 'contact' })] },
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.customerId })
     if (!parsed.success) throw notFound()
-    return getCustomer({ data: parsed.data })
+    const [found, rentals] = await Promise.all([getCustomer({ data: parsed.data }), rentalsForCustomer({ data: parsed.data })])
+    return { ...found, rentals }
   },
   head: ({ loaderData }) => ({
     meta: [{ title: `${loaderData ? customerName(loaderData.customer) : 'Customer'} · Garage` }],
@@ -26,7 +29,7 @@ export const Route = createFileRoute('/customers/$customerId')({
 })
 
 function CustomerPage() {
-  const { customer } = Route.useLoaderData()
+  const { customer, rentals } = Route.useLoaderData()
   const { tab } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const wa = whatsappUrl(customer.phone)
@@ -61,7 +64,7 @@ function CustomerPage() {
           { id: 'bookings', label: 'Bookings' },
           { id: 'invoices', label: 'Invoices' },
           { id: 'comms', label: 'Comms' },
-          { id: 'rentals', label: 'Rentals' },
+          { id: 'rentals', label: 'Rentals', count: rentals.length },
         ]}
         render={(key) => {
           switch (key) {
@@ -74,7 +77,15 @@ function CustomerPage() {
             case 'comms':
               return <ComingSoon title="Communications">Emails, SMS and WhatsApp messages sent to this customer.</ComingSoon>
             case 'rentals':
-              return <ComingSoon title="Rental & loan history">Fleet cars rented or loaned to this customer: vehicle, type, dates, weekly rate and status.</ComingSoon>
+              return (
+                <section className="panel stack">
+                  <div className="row between wrap">
+                    <h2>Rentals</h2>
+                    <Link to="/rentals/new" search={{ customer: customer.id }} className="button ghost">Start rental</Link>
+                  </div>
+                  {rentals.length === 0 ? <p className="muted">No rentals yet.</p> : <RentalTable rentals={rentals} hide="customer" />}
+                </section>
+              )
           }
         }}
       />

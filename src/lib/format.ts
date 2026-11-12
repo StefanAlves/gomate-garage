@@ -1,4 +1,7 @@
-import type { CarFeature, CarPurpose, CarStatus, ChargeStatus, ContactMethod, DocumentKind, FuelType, PaymentMethod, TransactionCategory } from './schemas'
+import type {
+  CarFeature, CarPurpose, CarStatus, ChargeStatus, ContactMethod, DeductionKind, DocumentKind, FuelType, PaymentMethod,
+  RentalStatus, TransactionCategory,
+} from './schemas'
 
 // Fixed locale + UTC so server and client render identical text (no hydration mismatch).
 const date = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeZone: 'UTC' })
@@ -72,7 +75,7 @@ export const chargeStatusLabel: Record<ChargeStatus, string> = {
   not_paid: 'Not paid',
   transferred: 'Transferred',
   business_paid: 'Business paid',
-  paid_by_renter: 'Paid by renter',
+  paid_by_customer: 'Paid by customer',
 }
 
 export const categoryLabel: Record<TransactionCategory, string> = {
@@ -82,6 +85,7 @@ export const categoryLabel: Record<TransactionCategory, string> = {
   sale_income: 'Sale income',
   bond_received: 'Bond received',
   bond_returned: 'Bond returned',
+  bond_applied: 'Bond kept',
 }
 
 export const methodLabel: Record<PaymentMethod, string> = {
@@ -113,4 +117,17 @@ export const contactLabel: Record<ContactMethod, string> = {
   sms: 'SMS',
   whatsapp: 'WhatsApp',
   phone: 'Phone call',
+}
+
+export const rentalStatusLabel: Record<RentalStatus, string> = {
+  active: 'Active',
+  returned: 'Returned',
+}
+
+export const deductionKindLabel: Record<DeductionKind, string> = {
+  rent_arrears: 'Rent arrears',
+  fine: 'Fine',
+  toll: 'Toll',
+  damage: 'Damage',
+  other: 'Other',
 }

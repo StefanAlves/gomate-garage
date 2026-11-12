@@ -35,13 +35,17 @@ export const CAR_FEATURES = [
   'bluetooth', 'reverse_camera', 'new_tyres', 'new_brakes', 'automatic', 'cruise_control', 'sunroof',
 ] as const
 export const CHARGE_KINDS = ['fine', 'toll'] as const
-export const CHARGE_STATUSES = ['not_paid', 'transferred', 'business_paid', 'paid_by_renter'] as const
+export const CHARGE_STATUSES = ['not_paid', 'transferred', 'business_paid', 'paid_by_customer'] as const
 export const TRANSACTION_CATEGORIES = [
-  'initial_investment', 'expense', 'rental_income', 'sale_income', 'bond_received', 'bond_returned',
+  'initial_investment', 'expense', 'rental_income', 'sale_income', 'bond_received', 'bond_returned', 'bond_applied',
 ] as const
 export const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'other'] as const
 export const PERIODS = ['today', 'week', 'month', '30d', 'year', 'all'] as const
 export const DOCUMENT_KINDS = ['licence_front', 'licence_back', 'passport'] as const
+export const RENTAL_STATUSES = ['active', 'returned'] as const
+export const DEDUCTION_KINDS = ['rent_arrears', 'fine', 'toll', 'damage', 'other'] as const
+/** Deductions staff type in at Return; the others come from Arrears and linked fines / tolls. */
+export const MANUAL_DEDUCTION_KINDS = ['damage', 'other'] as const
 
 export type CarFeature = (typeof CAR_FEATURES)[number]
 export type ChargeKind = (typeof CHARGE_KINDS)[number]
@@ -50,6 +54,8 @@ export type TransactionCategory = (typeof TRANSACTION_CATEGORIES)[number]
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 export type Period = (typeof PERIODS)[number]
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number]
+export type RentalStatus = (typeof RENTAL_STATUSES)[number]
+export type DeductionKind = (typeof DEDUCTION_KINDS)[number]
 
 // ---- Field helpers -----------------------------------------------------------
 
@@ -244,6 +250,71 @@ export const transactionInputSchema = z.object({
 export type TransactionValues = z.output<typeof transactionInputSchema>
 export const updateTransactionSchema = idSchema.extend({ values: transactionInputSchema })
 
+// ---- Rentals ---------------------------------------------------------------------
+
+const requiredMoney = (message: string) =>
+  optionalMoney.refine((v) => v != null && v > 0, message).transform((v) => v!)
+const phonePattern = /^[+\d][\d\s()-]*$/
+
+/**
+ * Starting a Rental. The Customer is either picked (`customerId`) or created
+ * on the spot from a name and mobile, so a walk-in is one form.
+ */
+export const startRentalInputSchema = z.object({
+  carId: z.coerce.number('Choose a car').int().positive('Choose a car'),
+  customerMode: z.enum(['existing', 'new']).default('existing'),
+  customerId: optionalId,
+  firstName: optionalText(60),
+  lastName: optionalText(60),
+  phone: optionalText(30),
+  startDate: z.iso.date('Start date is required'),
+  weeklyRent: requiredMoney('Enter the weekly rent'),
+  bond: optionalMoney.transform((v) => v ?? 0),
+  bondMethod: optionalEnum(PAYMENT_METHODS),
+  notes: optionalText(2000),
+}).superRefine((v, ctx) => {
+  if (v.customerMode === 'existing') {
+    if (v.customerId == null) ctx.addIssue({ code: 'custom', path: ['customerId'], message: 'Choose a customer' })
+    return
+  }
+  if (!v.firstName) ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'First name is required' })
+  if (!v.phone || v.phone.length < 6) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Mobile is required' })
+  else if (!phonePattern.test(v.phone)) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Invalid phone number' })
+})
+export type StartRentalValues = z.output<typeof startRentalInputSchema>
+
+export const rentPaymentInputSchema = z.object({
+  paidOn: z.iso.date('Date is required'),
+  amount: requiredMoney('Enter an amount above 0'),
+  method: optionalEnum(PAYMENT_METHODS),
+  notes: optionalText(500),
+})
+export type RentPaymentValues = z.output<typeof rentPaymentInputSchema>
+export const recordRentPaymentSchema = idSchema.extend({ values: rentPaymentInputSchema })
+
+export const rentChangeInputSchema = z.object({
+  effectiveFrom: z.iso.date('Date is required'),
+  weeklyRent: requiredMoney('Enter the weekly rent'),
+})
+export type RentChangeValues = z.output<typeof rentChangeInputSchema>
+export const adjustRentSchema = idSchema.extend({ values: rentChangeInputSchema })
+
+export const returnRentalInputSchema = z.object({
+  returnedOn: z.iso.date('Return date is required'),
+  reason: optionalText(500),
+  /** Fines and tolls from the settlement preview to take out of the Bond. */
+  chargeIds: z.array(z.coerce.number().int().positive()).max(200).default([]),
+  extras: z.array(z.object({
+    kind: z.enum(MANUAL_DEDUCTION_KINDS),
+    description: z.string().trim().min(1, 'Describe the deduction').max(200),
+    amount: requiredMoney('Enter an amount above 0'),
+  })).max(20).default([]),
+  refundMethod: optionalEnum(PAYMENT_METHODS),
+})
+export type ReturnRentalValues = z.output<typeof returnRentalInputSchema>
+export const returnRentalSchema = idSchema.extend({ values: returnRentalInputSchema })
+export const settlementPreviewSchema = idSchema.extend({ returnedOn: z.iso.date() })
+
 // ---- List search params --------------------------------------------------------
 
 export const PAGE_SIZES = [25, 50, 100] as const
@@ -298,6 +369,20 @@ export const transactionListSearchSchema = z.object({
 })
 export const transactionListSearchDefaults = transactionListSearchSchema.parse({})
 
+export const RENTAL_SORTS = ['arrears', 'start', 'recent'] as const
+export const rentalListSearchSchema = z.object({
+  q: z.string().trim().max(100).optional().catch(undefined),
+  status: z.enum([...RENTAL_STATUSES, 'all']).default('active').catch('active'),
+  show: z.enum(['all', 'behind']).default('all').catch('all'),
+  sort: z.enum(RENTAL_SORTS).default('arrears').catch('arrears'),
+})
+export const rentalListSearchDefaults = rentalListSearchSchema.parse({})
+
+export const newRentalSearchSchema = z.object({
+  car: z.coerce.number().int().positive().optional().catch(undefined),
+  customer: z.coerce.number().int().positive().optional().catch(undefined),
+})
+
 export const overviewSearchSchema = z.object({ period: periodParam })
 
 // ---- Detail page tabs ----------------------------------------------------------
@@ -305,7 +390,7 @@ export const overviewSearchSchema = z.object({ period: periodParam })
 export const CUSTOMER_TABS = ['contact', 'bookings', 'invoices', 'comms', 'rentals'] as const
 export const customerTabSearchSchema = z.object({ tab: z.enum(CUSTOMER_TABS).default('contact').catch('contact') })
 
-export const CAR_TABS = ['specs', 'stock', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
+export const CAR_TABS = ['specs', 'stock', 'rentals', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
 export const carTabSearchSchema = z.object({ tab: z.enum(CAR_TABS).default('specs').catch('specs') })
 
 /** Turn a ZodError into { field: message } for forms. */

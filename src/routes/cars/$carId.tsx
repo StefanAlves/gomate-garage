@@ -8,6 +8,8 @@ import {
 } from '~/lib/format'
 import { deleteCar, getCar, updateCar } from '~/server/garage.functions'
 import { getCarFleetRecords, updateCarStock } from '~/server/fleet.functions'
+import { rentalsForCar } from '~/server/rentals.functions'
+import { RentalTable } from '~/components/rental-table'
 import type { Charge } from '~/server/charges.server'
 import { CarForm } from '~/components/car-form'
 import { StockForm } from '~/components/stock-form'
@@ -22,17 +24,23 @@ export const Route = createFileRoute('/cars/$carId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.carId })
     if (!parsed.success) throw notFound()
-    const [car, records] = await Promise.all([getCar({ data: parsed.data }), getCarFleetRecords({ data: parsed.data })])
-    return { car, records }
+    const [car, records, rentals] = await Promise.all([
+      getCar({ data: parsed.data }),
+      getCarFleetRecords({ data: parsed.data }),
+      rentalsForCar({ data: parsed.data }),
+    ])
+    return { car, records, rentals }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.car.plate ?? 'Car'} · Garage` }] }),
   component: CarPage,
 })
 
 function CarPage() {
-  const { car, records } = Route.useLoaderData()
+  const { car, records, rentals } = Route.useLoaderData()
   const { tab } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
+  const isRental = car.purpose === 'rental'
+  const activeRental = rentals.find((r) => r.status === 'active')
 
   return (
     <div className="stack">
@@ -46,17 +54,27 @@ function CarPage() {
           <span className="plate">{car.plate}</span>
           {car.writtenOff && <span className="badge urgent">Written off</span>}
         </div>
+        {isRental && car.status === 'ready' && (
+          <div><Link to="/rentals/new" search={{ car: car.id }} className="button">Start rental</Link></div>
+        )}
+        {activeRental && (
+          <p className="small">
+            Rented to {activeRental.customerName} since {formatDate(activeRental.startDate)} ·{' '}
+            <Link to="/rentals/$rentalId" params={{ rentalId: String(activeRental.id) }}>Open rental →</Link>
+          </p>
+        )}
         <p className="muted small">Odometer {formatKm(car.mileageKm)}</p>
       </header>
 
       <MaintenanceSummary />
 
       <DetailTabs<TabKey>
-        selected={tab}
+        selected={tab === 'rentals' && !isRental ? 'specs' : tab}
         onChange={(t) => navigate({ search: { tab: t === 'specs' ? undefined : t }, replace: true })}
         tabs={[
           { id: 'specs', label: 'Specifications' },
           { id: 'stock', label: 'Stock' },
+          ...(isRental ? [{ id: 'rentals' as const, label: 'Rentals', count: rentals.length }] : []),
           { id: 'history', label: 'Vehicle history' },
           { id: 'fines', label: 'Fines', count: records.fines.length },
           { id: 'tolls', label: 'Tolls', count: records.tolls.length },
@@ -71,6 +89,13 @@ function CarPage() {
               return <SpecsTab />
             case 'stock':
               return <StockTab />
+            case 'rentals':
+              return (
+                <section className="panel stack">
+                  <h2>Rentals</h2>
+                  {rentals.length === 0 ? <p className="muted">This car hasn't been rented yet.</p> : <RentalTable rentals={rentals} hide="car" />}
+                </section>
+              )
             case 'history':
               return <ComingSoon title="Vehicle history">Every workshop booking for this car, newest first.</ComingSoon>
             case 'fines':

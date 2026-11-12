@@ -26,7 +26,7 @@ export const Route = createFileRoute('/fleet/transactions')({
   component: Transactions,
 })
 
-const INCOMING: TransactionCategory[] = ['rental_income', 'sale_income', 'bond_received']
+const INCOMING: TransactionCategory[] = ['rental_income', 'sale_income', 'bond_received', 'bond_applied']
 
 type Editing = { mode: 'new'; category?: TransactionCategory } | { mode: 'edit'; tx: Transaction } | null
 

@@ -5,7 +5,8 @@ import { periodRange } from '~/lib/period'
 import type { PaymentMethod, Period, TransactionCategory, TransactionValues, transactionListSearchSchema } from '~/lib/schemas'
 
 // Per-car money ledger. Amounts are positive; the category says which way the
-// money went. Bonds are tracked but never count as income or P&L.
+// money went. Bonds are tracked but don't count as income, except the part
+// kept at a Rental's Return (bond_applied).
 
 export interface Transaction {
   id: number
@@ -28,6 +29,8 @@ export interface Totals {
   expensesCents: number
   rentalIncomeCents: number
   saleIncomeCents: number
+  /** Bond kept against Rental deductions: income, and no longer held. */
+  bondAppliedCents: number
   bondHeldCents: number
   /** Income − investment − expenses. */
   pnlCents: number
@@ -41,14 +44,15 @@ export const totalsColumns = `
   coalesce(SUM(CASE WHEN t.category = 'expense' THEN t.amount_cents END), 0) AS expensesCents,
   coalesce(SUM(CASE WHEN t.category = 'rental_income' THEN t.amount_cents END), 0) AS rentalIncomeCents,
   coalesce(SUM(CASE WHEN t.category = 'sale_income' THEN t.amount_cents END), 0) AS saleIncomeCents,
+  coalesce(SUM(CASE WHEN t.category = 'bond_applied' THEN t.amount_cents END), 0) AS bondAppliedCents,
   coalesce(SUM(CASE WHEN t.category = 'bond_received' THEN t.amount_cents
-                    WHEN t.category = 'bond_returned' THEN -t.amount_cents END), 0) AS bondHeldCents`
+                    WHEN t.category IN ('bond_returned', 'bond_applied') THEN -t.amount_cents END), 0) AS bondHeldCents`
 
 type RawTotals = Omit<Totals, 'pnlCents' | 'roi'>
 
 export function withPnl(r: RawTotals): Totals {
   const spent = r.investedCents + r.expensesCents
-  const pnlCents = r.rentalIncomeCents + r.saleIncomeCents - spent
+  const pnlCents = r.rentalIncomeCents + r.saleIncomeCents + r.bondAppliedCents - spent
   return { ...r, pnlCents, roi: spent > 0 ? pnlCents / spent : null }
 }
 

@@ -25,6 +25,8 @@ import { Route as FleetRentalsRouteImport } from './routes/fleet/rentals'
 import { Route as FleetStockRouteImport } from './routes/fleet/stock'
 import { Route as FleetTollsRouteImport } from './routes/fleet/tolls'
 import { Route as FleetTransactionsRouteImport } from './routes/fleet/transactions'
+import { Route as RentalsRentalIdRouteImport } from './routes/rentals/$rentalId'
+import { Route as RentalsNewRouteImport } from './routes/rentals/new'
 import { Route as ApiDocumentsDocumentIdRouteImport } from './routes/api/documents/$documentId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -107,6 +109,16 @@ const FleetTransactionsRoute = FleetTransactionsRouteImport.update({
   path: '/transactions',
   getParentRoute: () => FleetRouteRoute,
 } as any)
+const RentalsRentalIdRoute = RentalsRentalIdRouteImport.update({
+  id: '/rentals/$rentalId',
+  path: '/rentals/$rentalId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RentalsNewRoute = RentalsNewRouteImport.update({
+  id: '/rentals/new',
+  path: '/rentals/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDocumentsDocumentIdRoute = ApiDocumentsDocumentIdRouteImport.update({
   id: '/api/documents/$documentId',
   path: '/api/documents/$documentId',
@@ -127,6 +139,8 @@ export interface FileRoutesByFullPath {
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
+  '/rentals/$rentalId': typeof RentalsRentalIdRoute
+  '/rentals/new': typeof RentalsNewRoute
   '/cars/': typeof CarsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/fleet/': typeof FleetIndexRoute
@@ -145,6 +159,8 @@ export interface FileRoutesByTo {
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
+  '/rentals/$rentalId': typeof RentalsRentalIdRoute
+  '/rentals/new': typeof RentalsNewRoute
   '/cars': typeof CarsIndexRoute
   '/customers': typeof CustomersIndexRoute
   '/fleet': typeof FleetIndexRoute
@@ -165,6 +181,8 @@ export interface FileRoutesById {
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
+  '/rentals/$rentalId': typeof RentalsRentalIdRoute
+  '/rentals/new': typeof RentalsNewRoute
   '/cars/': typeof CarsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/fleet/': typeof FleetIndexRoute
@@ -186,6 +204,8 @@ export interface FileRouteTypes {
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
+    | '/rentals/$rentalId'
+    | '/rentals/new'
     | '/cars/'
     | '/customers/'
     | '/fleet/'
@@ -204,6 +224,8 @@ export interface FileRouteTypes {
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
+    | '/rentals/$rentalId'
+    | '/rentals/new'
     | '/cars'
     | '/customers'
     | '/fleet'
@@ -223,6 +245,8 @@ export interface FileRouteTypes {
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
+    | '/rentals/$rentalId'
+    | '/rentals/new'
     | '/cars/'
     | '/customers/'
     | '/fleet/'
@@ -236,6 +260,8 @@ export interface RootRouteChildren {
   CarsNewRoute: typeof CarsNewRoute
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRoute
   CustomersNewRoute: typeof CustomersNewRoute
+  RentalsRentalIdRoute: typeof RentalsRentalIdRoute
+  RentalsNewRoute: typeof RentalsNewRoute
   CarsIndexRoute: typeof CarsIndexRoute
   CustomersIndexRoute: typeof CustomersIndexRoute
   ApiDocumentsDocumentIdRoute: typeof ApiDocumentsDocumentIdRoute
@@ -355,6 +381,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetTransactionsRouteImport
       parentRoute: typeof FleetRouteRoute
     }
+    '/rentals/$rentalId': {
+      id: '/rentals/$rentalId'
+      path: '/rentals/$rentalId'
+      fullPath: '/rentals/$rentalId'
+      preLoaderRoute: typeof RentalsRentalIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rentals/new': {
+      id: '/rentals/new'
+      path: '/rentals/new'
+      fullPath: '/rentals/new'
+      preLoaderRoute: typeof RentalsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/documents/$documentId': {
       id: '/api/documents/$documentId'
       path: '/api/documents/$documentId'
@@ -398,6 +438,8 @@ const rootRouteChildren: RootRouteChildren = {
   CarsNewRoute: CarsNewRoute,
   CustomersCustomerIdRoute: CustomersCustomerIdRoute,
   CustomersNewRoute: CustomersNewRoute,
+  RentalsRentalIdRoute: RentalsRentalIdRoute,
+  RentalsNewRoute: RentalsNewRoute,
   CarsIndexRoute: CarsIndexRoute,
   CustomersIndexRoute: CustomersIndexRoute,
   ApiDocumentsDocumentIdRoute: ApiDocumentsDocumentIdRoute,
