@@ -1,4 +1,4 @@
-import { generatePassword, hashPassword } from '../src/server/password.ts'
+import { generatePassword, hashPassword, MIN_PASSWORD_LENGTH } from '../src/server/password.ts'
 import { describeTarget, fail, openClient } from './lib.ts'
 
 // Staff accounts. There's no sign-up page; accounts are made here.
@@ -7,6 +7,7 @@ import { describeTarget, fail, openClient } from './lib.ts'
 //   npm run staff -- reset ana@example.com           → new password, signs them out everywhere
 //   npm run staff -- disable ana@example.com         → can't sign in, signed out everywhere
 //   npm run staff -- enable ana@example.com
+// add and reset generate a password, unless STAFF_PASSWORD is set to one you chose.
 
 const [command, email, ...nameParts] = process.argv.slice(2)
 const db = await openClient(process.env)
@@ -15,8 +16,13 @@ console.log(describeTarget(process.env).label)
 const now = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
 const find = async (e: string) => (await db.execute({ sql: 'SELECT id FROM staff WHERE email = ?', args: [e] })).rows[0]
 const signOutEverywhere = (id: unknown) => db.execute({ sql: 'DELETE FROM sessions WHERE staff_id = ?', args: [id as number] })
+const chosen = process.env.STAFF_PASSWORD
+if (chosen != null && chosen.length < MIN_PASSWORD_LENGTH) {
+  console.warn(`Warning: the chosen password is shorter than ${MIN_PASSWORD_LENGTH} characters.`)
+}
+const newPassword = () => chosen ?? generatePassword()
 const showPassword = (password: string) =>
-  console.log(`\nPassword: ${password}\nShare it privately; it isn't shown again.`)
+  console.log(chosen != null ? '\nUsing the password you chose.' : `\nPassword: ${password}\nShare it privately; it isn't shown again.`)
 
 switch (command) {
   case 'list': {
@@ -29,7 +35,7 @@ switch (command) {
     const name = nameParts.join(' ').trim()
     if (!email || !email.includes('@') || !name) fail('Usage: npm run staff -- add <email> "<full name>"')
     if (await find(email)) fail(`${email} already has an account.`)
-    const password = generatePassword()
+    const password = newPassword()
     await db.execute({ sql: 'INSERT INTO staff (name, email, password_hash) VALUES (?, ?, ?)', args: [name, email, await hashPassword(password)] })
     console.log(`Added ${name} <${email}>.`)
     showPassword(password)
@@ -38,7 +44,7 @@ switch (command) {
   case 'reset': {
     const row = email && (await find(email))
     if (!row) fail(`No account for ${email ?? '(missing email)'}.`)
-    const password = generatePassword()
+    const password = newPassword()
     await db.execute({
       sql: `UPDATE staff SET password_hash = ?, failed_logins = 0, locked_until = NULL, updated_at = ${now} WHERE id = ?`,
       args: [await hashPassword(password), row.id as number],
