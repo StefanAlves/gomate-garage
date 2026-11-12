@@ -32,7 +32,7 @@ const columns = `ch.id, ch.kind, ch.car_id AS carId, car.plate AS carPlate, ch.c
   ch.created_at AS createdAt, ch.updated_at AS updatedAt`
 const from = `FROM charges ch LEFT JOIN cars car ON car.id = ch.car_id LEFT JOIN customers c ON c.id = ch.customer_id`
 
-export function listCharges({ kind, q, page, size, status, customer }: z.output<typeof chargeListInputSchema>) {
+export async function listCharges({ kind, q, page, size, status, customer }: z.output<typeof chargeListInputSchema>) {
   const conditions = ['ch.kind = :kind']
   const params: Record<string, string | number> = { kind }
   if (status) {
@@ -50,31 +50,30 @@ export function listCharges({ kind, q, page, size, status, customer }: z.output<
     params.like = like
   }
   const where = `WHERE ${conditions.join(' AND ')}`
-  const { total, amountCents } = db
-    .prepare(`SELECT COUNT(*) AS total, coalesce(SUM(ch.amount_cents), 0) AS amountCents ${from} ${where}`)
-    .get(params) as { total: number; amountCents: number }
+  const { total, amountCents } = (await db.get<{ total: number; amountCents: number }>(
+    `SELECT COUNT(*) AS total, coalesce(SUM(ch.amount_cents), 0) AS amountCents ${from} ${where}`, params,
+  ))!
   const pageCount = Math.max(1, Math.ceil(total / size))
   const current = Math.min(page, pageCount)
-  const items = db
-    .prepare(`SELECT ${columns} ${from} ${where} ORDER BY ch.incurred_on DESC, ch.id DESC LIMIT :limit OFFSET :offset`)
-    .all({ ...params, limit: size, offset: (current - 1) * size }) as unknown as Charge[]
+  const items = await db.all<Charge>(
+    `SELECT ${columns} ${from} ${where} ORDER BY ch.incurred_on DESC, ch.id DESC LIMIT :limit OFFSET :offset`,
+    { ...params, limit: size, offset: (current - 1) * size },
+  )
   return { items, total, amountCents, page: current, pageCount }
 }
 
 export function chargesForCar(carId: number, kind: ChargeKind) {
-  return db
-    .prepare(`SELECT ${columns} ${from} WHERE ch.car_id = ? AND ch.kind = ? ORDER BY ch.incurred_on DESC, ch.id DESC`)
-    .all(carId, kind) as unknown as Charge[]
+  return db.all<Charge>(
+    `SELECT ${columns} ${from} WHERE ch.car_id = ? AND ch.kind = ? ORDER BY ch.incurred_on DESC, ch.id DESC`, [carId, kind],
+  )
 }
 
 /** Count and total of fines + tolls nobody has paid yet. */
 export function unpaidCharges() {
-  return db
-    .prepare(
-      `SELECT ch.kind, COUNT(*) AS count, coalesce(SUM(ch.amount_cents), 0) AS amountCents
-       FROM charges ch WHERE ch.status = 'not_paid' GROUP BY ch.kind`,
-    )
-    .all() as unknown as { kind: ChargeKind; count: number; amountCents: number }[]
+  return db.all<{ kind: ChargeKind; count: number; amountCents: number }>(
+    `SELECT ch.kind, COUNT(*) AS count, coalesce(SUM(ch.amount_cents), 0) AS amountCents
+     FROM charges ch WHERE ch.status = 'not_paid' GROUP BY ch.kind`,
+  )
 }
 
 // Tolls have no offence type; drop it so a stray value can't be stored.
@@ -84,31 +83,28 @@ const toParams = (v: ChargeValues) => ({
   amount: toCents(v.amount),
 })
 
-export function insertCharge(v: ChargeValues) {
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO charges (kind, car_id, customer_id, incurred_on, due_on, offence_type, notice_number,
-         amount_cents, payment_reference, status, note)
-       VALUES (:kind, :carId, :customerId, :incurredOn, :dueOn, :offenceType, :noticeNumber,
-         :amount, :paymentReference, :status, :note)`,
-    )
-    .run(toParams(v))
-  return Number(lastInsertRowid)
-}
-
-export function updateCharge(id: number, v: ChargeValues) {
-  return (
-    db
-      .prepare(
-        `UPDATE charges SET car_id = :carId, customer_id = :customerId, incurred_on = :incurredOn, due_on = :dueOn,
-           offence_type = :offenceType, notice_number = :noticeNumber, amount_cents = :amount,
-           payment_reference = :paymentReference, status = :status, note = :note, updated_at = ${sqlNow}
-         WHERE id = :id AND kind = :kind`,
-      )
-      .run({ ...toParams(v), id }).changes > 0
+export async function insertCharge(v: ChargeValues) {
+  const { lastInsertRowid } = await db.run(
+    `INSERT INTO charges (kind, car_id, customer_id, incurred_on, due_on, offence_type, notice_number,
+       amount_cents, payment_reference, status, note)
+     VALUES (:kind, :carId, :customerId, :incurredOn, :dueOn, :offenceType, :noticeNumber,
+       :amount, :paymentReference, :status, :note)`,
+    toParams(v),
   )
+  return lastInsertRowid
 }
 
-export function deleteCharge(id: number) {
-  return db.prepare('DELETE FROM charges WHERE id = ?').run(id).changes > 0
+export async function updateCharge(id: number, v: ChargeValues) {
+  const { changes } = await db.run(
+    `UPDATE charges SET car_id = :carId, customer_id = :customerId, incurred_on = :incurredOn, due_on = :dueOn,
+       offence_type = :offenceType, notice_number = :noticeNumber, amount_cents = :amount,
+       payment_reference = :paymentReference, status = :status, note = :note, updated_at = ${sqlNow}
+     WHERE id = :id AND kind = :kind`,
+    { ...toParams(v), id },
+  )
+  return changes > 0
+}
+
+export async function deleteCharge(id: number) {
+  return (await db.run('DELETE FROM charges WHERE id = ?', [id])).changes > 0
 }

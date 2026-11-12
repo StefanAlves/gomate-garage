@@ -15,36 +15,36 @@ type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, st
 
 export const listFinanceSales = createServerFn({ method: 'GET' })
   .validator(financeListSearchSchema)
-  .handler(({ data }) => ({ items: finance.listFinanceSales(data, garageToday()) }))
+  .handler(async ({ data }) => ({ items: await finance.listFinanceSales(data, garageToday()) }))
 
 export const getFinanceSale = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
     const today = garageToday()
-    const found = finance.getFinanceSale(data.id, today)
+    const found = await finance.getFinanceSale(data.id, today)
     if (!found) throw notFound()
     return { ...found, today }
   })
 
 export const financeSalesForCustomer = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => finance.financeSalesForCustomer(data.id, garageToday()))
+  .handler(async ({ data }) => await finance.financeSalesForCustomer(data.id, garageToday()))
 
 export const financeSalesForCar = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => finance.financeSalesForCar(data.id, garageToday()))
+  .handler(async ({ data }) => await finance.financeSalesForCar(data.id, garageToday()))
 
 /** Ready Sale cars and customers (with licence-on-file) for the Start finance sale form. */
-export const startFinanceSaleOptions = createServerFn({ method: 'GET' }).handler(() => ({
-  cars: finance.availableSaleCars(),
-  customers: rentalCustomerOptions(),
+export const startFinanceSaleOptions = createServerFn({ method: 'GET' }).handler(async () => ({
+  cars: await finance.availableSaleCars(),
+  customers: await rentalCustomerOptions(),
   today: garageToday(),
 }))
 
 export const startFinanceSale = createServerFn({ method: 'POST' })
   .validator(startFinanceSaleInputSchema)
-  .handler(({ data }): Result<{ id: number }> => {
-    const out = finance.startFinanceSale(data)
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
+    const out = await finance.startFinanceSale(data)
     if (out.ok) return { ok: true, value: { id: out.id } }
     switch (out.reason) {
       case 'car_not_available':
@@ -70,16 +70,16 @@ function paymentResult(out: finance.PaymentOutcome): Result<{ completed: boolean
 
 export const recordFinancePayment = createServerFn({ method: 'POST' })
   .validator(recordFinancePaymentSchema)
-  .handler(({ data }) => paymentResult(finance.recordFinancePayment(data.id, data.values)))
+  .handler(async ({ data }) => paymentResult(await finance.recordFinancePayment(data.id, data.values)))
 
 export const payoffFinanceSale = createServerFn({ method: 'POST' })
   .validator(idSchema.extend({ paidOn: z.iso.date(), method: z.enum(PAYMENT_METHODS).nullable() }))
-  .handler(({ data }) => paymentResult(finance.payoff(data.id, { paidOn: data.paidOn, method: data.method })))
+  .handler(async ({ data }) => paymentResult(await finance.payoff(data.id, { paidOn: data.paidOn, method: data.method })))
 
 export const defaultFinanceSale = createServerFn({ method: 'POST' })
   .validator(defaultFinanceSaleSchema)
-  .handler(({ data }): Result<null> => {
-    switch (finance.defaultFinanceSale(data.id, data.values)) {
+  .handler(async ({ data }): Promise<Result<null>> => {
+    switch (await finance.defaultFinanceSale(data.id, data.values)) {
       case 'not_found':
         throw notFound()
       case 'not_active':
@@ -93,7 +93,7 @@ export const defaultFinanceSale = createServerFn({ method: 'POST' })
 
 export const updateFinanceNotes = createServerFn({ method: 'POST' })
   .validator(idSchema.extend({ notes: z.string().trim().max(2000).transform((v) => v || null) }))
-  .handler(({ data }): Result<null> => {
-    if (!finance.updateFinanceNotes(data.id, data.notes)) throw notFound()
+  .handler(async ({ data }): Promise<Result<null>> => {
+    if (!await finance.updateFinanceNotes(data.id, data.notes)) throw notFound()
     return { ok: true, value: null }
   })

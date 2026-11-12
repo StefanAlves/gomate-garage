@@ -8,3 +8,9 @@ data/uploads
 
 # Panda
 styled-system
+
+# Secrets (Turso, Blob). Never commit.
+.env
+.env.*
+!.env.example
+.vercel

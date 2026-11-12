@@ -74,13 +74,13 @@ const planOf = (f: Pick<FinanceSale, 'priceCents' | 'depositCents' | 'instalment
 export const scheduleOf = (f: FinanceSale): ScheduleRow[] =>
   financeSchedule(f.agreedOn, f.depositCents, f.instalmentCount, planOf(f))
 
-function paidBySale(ids: number[]) {
+async function paidBySale(ids: number[]) {
   const out = new Map<number, number>()
   if (ids.length === 0) return out
-  for (const r of db
-    .prepare(`SELECT finance_sale_id AS id, SUM(amount_cents) AS cents FROM transactions
-              WHERE category = 'sale_income' AND finance_sale_id IN (${ids.join(',')}) GROUP BY finance_sale_id`)
-    .all() as unknown as { id: number; cents: number }[])
+  for (const r of await db.all<{ id: number; cents: number }>(
+    `SELECT finance_sale_id AS id, SUM(amount_cents) AS cents FROM transactions
+     WHERE category = 'sale_income' AND finance_sale_id IN (${ids.join(',')}) GROUP BY finance_sale_id`,
+  ))
     out.set(r.id, r.cents)
   return out
 }
@@ -104,26 +104,26 @@ function summarise(f: FinanceSale, paidCents: number, today: string): FinanceSum
   }
 }
 
-function withSummaries(rows: FinanceSale[], today: string): FinanceSaleWithSummary[] {
-  const paid = paidBySale(rows.map((r) => r.id))
+async function withSummaries(rows: FinanceSale[], today: string): Promise<FinanceSaleWithSummary[]> {
+  const paid = await paidBySale(rows.map((r) => r.id))
   return rows.map((f) => ({ ...f, ...summarise(f, paid.get(f.id) ?? 0, today) }))
 }
 
 // ---- Reads -------------------------------------------------------------------
 
-export function getFinanceSale(id: number, today: string) {
-  const row = db.prepare(`SELECT ${columns} ${from} WHERE f.id = ?`).get(id) as FinanceSale | undefined
+export async function getFinanceSale(id: number, today: string) {
+  const row = await db.get<FinanceSale>(`SELECT ${columns} ${from} WHERE f.id = ?`, [id])
   if (!row) return null
-  const [sale] = withSummaries([row], today)
+  const [sale] = await withSummaries([row], today)
   const asOf = row.closedOn && row.closedOn < today ? row.closedOn : today
-  const payments = db
-    .prepare(`SELECT id, occurred_on AS occurredOn, amount_cents AS amountCents, method, notes FROM transactions
-              WHERE finance_sale_id = ? AND category = 'sale_income' ORDER BY occurred_on DESC, id DESC`)
-    .all(id) as unknown as FinancePayment[]
+  const payments = await db.all<FinancePayment>(
+    `SELECT id, occurred_on AS occurredOn, amount_cents AS amountCents, method, notes FROM transactions
+     WHERE finance_sale_id = ? AND category = 'sale_income' ORDER BY occurred_on DESC, id DESC`, [id],
+  )
   return { sale: sale!, schedule: scheduleWithState(scheduleOf(row), sale!.paidCents, asOf), payments }
 }
 
-export function listFinanceSales({ q, status, show, sort }: z.output<typeof financeListSearchSchema>, today: string) {
+export async function listFinanceSales({ q, status, show, sort }: z.output<typeof financeListSearchSchema>, today: string) {
   const conditions: string[] = []
   const params: Record<string, string> = {}
   if (status !== 'all') {
@@ -137,7 +137,7 @@ export function listFinanceSales({ q, status, show, sort }: z.output<typeof fina
     params.like = like
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  let items = withSummaries(db.prepare(`SELECT ${columns} ${from} ${where}`).all(params) as unknown as FinanceSale[], today)
+  let items = await withSummaries(await db.all<FinanceSale>(`SELECT ${columns} ${from} ${where}`, params), today)
   if (show === 'overdue') items = items.filter((f) => f.overdue)
   const byStart = (a: FinanceSale, b: FinanceSale) => b.agreedOn.localeCompare(a.agreedOn) || b.id - a.id
   items.sort(
@@ -152,30 +152,30 @@ const activeFirst = (rows: FinanceSaleWithSummary[]) =>
   rows.sort((a, b) => (a.status === b.status ? 0 : a.status === 'active' ? -1 : b.status === 'active' ? 1 : 0)
     || b.agreedOn.localeCompare(a.agreedOn) || b.id - a.id)
 
-export function financeSalesForCustomer(customerId: number, today: string) {
-  const rows = db.prepare(`SELECT ${columns} ${from} WHERE f.customer_id = ?`).all(customerId) as unknown as FinanceSale[]
-  return activeFirst(withSummaries(rows, today))
+export async function financeSalesForCustomer(customerId: number, today: string) {
+  const rows = await db.all<FinanceSale>(`SELECT ${columns} ${from} WHERE f.customer_id = ?`, [customerId])
+  return activeFirst(await withSummaries(rows, today))
 }
 
 /** Every Finance Sale of a car (one active at most; earlier ones were defaulted). */
-export function financeSalesForCar(carId: number, today: string) {
-  const rows = db.prepare(`SELECT ${columns} ${from} WHERE f.car_id = ?`).all(carId) as unknown as FinanceSale[]
-  return activeFirst(withSummaries(rows, today))
+export async function financeSalesForCar(carId: number, today: string) {
+  const rows = await db.all<FinanceSale>(`SELECT ${columns} ${from} WHERE f.car_id = ?`, [carId])
+  return activeFirst(await withSummaries(rows, today))
 }
 
 /** Overview tile: active Finance Sales behind on payments, and what they owe. */
-export function overdueFinanceSales(today: string) {
-  const overdue = listFinanceSales({ status: 'active', show: 'overdue', sort: 'arrears' }, today)
+export async function overdueFinanceSales(today: string) {
+  const overdue = await listFinanceSales({ status: 'active', show: 'overdue', sort: 'arrears' }, today)
   return { count: overdue.length, arrearsCents: overdue.reduce((s, f) => s + f.arrearsCents, 0) }
 }
 
 /** Ready Sale cars for the "Start finance sale" picker. */
 export function availableSaleCars() {
-  return db
-    .prepare(`SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
-                car.asking_price_cents AS askingPriceCents
-              FROM cars car WHERE car.purpose = 'sale' AND car.status = 'ready' ORDER BY car.plate`)
-    .all() as unknown as { id: number; plate: string; name: string; askingPriceCents: number | null }[]
+  return db.all<{ id: number; plate: string; name: string; askingPriceCents: number | null }>(
+    `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
+       car.asking_price_cents AS askingPriceCents
+     FROM cars car WHERE car.purpose = 'sale' AND car.status = 'ready' ORDER BY car.plate`,
+  )
 }
 
 // ---- Writes ------------------------------------------------------------------
@@ -189,42 +189,43 @@ export type StartOutcome =
  * and the Deposit, and moves the car to Under finance. A cash sale (no
  * Instalments) completes at once and the car becomes Sold.
  */
-export function startFinanceSale(v: StartFinanceSaleValues): StartOutcome {
+export async function startFinanceSale(v: StartFinanceSaleValues): Promise<StartOutcome> {
   const priceCents = toCents(v.price)!
   const depositCents = toCents(v.deposit) ?? 0
   const planned = financePlan(priceCents, depositCents, v.instalmentCount, toCents(v.instalmentAmount))
   if (!planned.ok) return { ok: false, reason: 'invalid_plan' }
-  return inTransaction((): StartOutcome => {
-    const car = db.prepare('SELECT purpose, status FROM cars WHERE id = ?').get(v.carId) as { purpose: string; status: string } | undefined
+  return inTransaction(async (): Promise<StartOutcome> => {
+    const car = await db.get<{ purpose: string; status: string }>('SELECT purpose, status FROM cars WHERE id = ?', [v.carId])
     if (!car || car.purpose !== 'sale' || car.status !== 'ready') return { ok: false, reason: 'car_not_available' }
-    const customerId = resolveInlineCustomer(v)
+    const customerId = await resolveInlineCustomer(v)
     if (customerId == null) return { ok: false, reason: 'customer_not_found' }
 
     const cash = v.instalmentCount === 0
-    const id = Number(
-      db.prepare(`INSERT INTO finance_sales (customer_id, car_id, agreed_on, price_cents, deposit_cents, instalment_count,
-                    instalment_cents, status, closed_on, notes)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(customerId, v.carId, v.agreedOn, priceCents, depositCents, v.instalmentCount, planned.plan.instalmentCents,
-          cash ? 'completed' : 'active', cash ? v.agreedOn : null, v.notes).lastInsertRowid,
+    const { lastInsertRowid: id } = await db.run(
+      `INSERT INTO finance_sales (customer_id, car_id, agreed_on, price_cents, deposit_cents, instalment_count,
+         instalment_cents, status, closed_on, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [customerId, v.carId, v.agreedOn, priceCents, depositCents, v.instalmentCount, planned.plan.instalmentCents,
+        cash ? 'completed' : 'active', cash ? v.agreedOn : null, v.notes],
     )
     if (depositCents > 0) {
-      db.prepare(`INSERT INTO transactions (car_id, customer_id, finance_sale_id, occurred_on, category, amount_cents, method, notes)
-                  VALUES (?, ?, ?, ?, 'sale_income', ?, ?, ?)`)
-        .run(v.carId, customerId, id, v.agreedOn, depositCents, v.depositMethod, cash ? 'Cash sale' : 'Deposit')
+      await db.run(`INSERT INTO transactions (car_id, customer_id, finance_sale_id, occurred_on, category, amount_cents, method, notes)
+                    VALUES (?, ?, ?, ?, 'sale_income', ?, ?, ?)`,
+        [v.carId, customerId, id, v.agreedOn, depositCents, v.depositMethod, cash ? 'Cash sale' : 'Deposit'])
     }
-    db.prepare(`UPDATE cars SET status = ?, updated_at = ${sqlNow} WHERE id = ?`).run(cash ? 'sold' : 'under_finance', v.carId)
+    await db.run(`UPDATE cars SET status = ?, updated_at = ${sqlNow} WHERE id = ?`, [cash ? 'sold' : 'under_finance', v.carId])
     return { ok: true, id, completed: cash }
   })
 }
 
 function saleRow(id: number) {
-  return db.prepare(`SELECT id, customer_id AS customerId, car_id AS carId, agreed_on AS agreedOn, price_cents AS priceCents,
-                       status FROM finance_sales WHERE id = ?`).get(id) as
-    | { id: number; customerId: number; carId: number; agreedOn: string; priceCents: number; status: FinanceStatus } | undefined
+  return db.get<{ id: number; customerId: number; carId: number; agreedOn: string; priceCents: number; status: FinanceStatus }>(
+    `SELECT id, customer_id AS customerId, car_id AS carId, agreed_on AS agreedOn, price_cents AS priceCents,
+       status FROM finance_sales WHERE id = ?`, [id],
+  )
 }
 
-const paidSoFar = (id: number) => paidBySale([id]).get(id) ?? 0
+const paidSoFar = async (id: number) => (await paidBySale([id])).get(id) ?? 0
 
 export type PaymentOutcome =
   | { ok: true; completed: boolean }
@@ -235,48 +236,50 @@ export type PaymentOutcome =
  * A payment of any amount up to the remaining balance. The payment that
  * brings the total to the price completes the sale and makes the car Sold.
  */
-export function recordFinancePayment(id: number, v: RentPaymentValues): PaymentOutcome {
-  return inTransaction((): PaymentOutcome => {
-    const f = saleRow(id)
+export function recordFinancePayment(id: number, v: RentPaymentValues): Promise<PaymentOutcome> {
+  return inTransaction(async (): Promise<PaymentOutcome> => {
+    const f = await saleRow(id)
     if (!f) return { ok: false, reason: 'not_found' }
     if (f.status !== 'active') return { ok: false, reason: 'not_active' }
     const amount = toCents(v.amount)!
-    const balanceCents = f.priceCents - paidSoFar(id)
+    const balanceCents = f.priceCents - (await paidSoFar(id))
     if (amount > balanceCents) return { ok: false, reason: 'overpaid', balanceCents }
-    db.prepare(`INSERT INTO transactions (car_id, customer_id, finance_sale_id, occurred_on, category, amount_cents, method, notes)
-                VALUES (?, ?, ?, ?, 'sale_income', ?, ?, ?)`)
-      .run(f.carId, f.customerId, id, v.paidOn, amount, v.method, v.notes)
+    await db.run(`INSERT INTO transactions (car_id, customer_id, finance_sale_id, occurred_on, category, amount_cents, method, notes)
+                  VALUES (?, ?, ?, ?, 'sale_income', ?, ?, ?)`,
+      [f.carId, f.customerId, id, v.paidOn, amount, v.method, v.notes])
     const completed = amount === balanceCents
     if (completed) {
-      db.prepare(`UPDATE finance_sales SET status = 'completed', closed_on = ?, updated_at = ${sqlNow} WHERE id = ?`).run(v.paidOn, id)
-      db.prepare(`UPDATE cars SET status = 'sold', updated_at = ${sqlNow} WHERE id = ?`).run(f.carId)
+      await db.run(`UPDATE finance_sales SET status = 'completed', closed_on = ?, updated_at = ${sqlNow} WHERE id = ?`, [v.paidOn, id])
+      await db.run(`UPDATE cars SET status = 'sold', updated_at = ${sqlNow} WHERE id = ?`, [f.carId])
     }
     return { ok: true, completed }
   })
 }
 
 /** Pays the whole remaining balance (no discount); the sale completes. */
-export function payoff(id: number, v: Pick<RentPaymentValues, 'paidOn' | 'method'>): PaymentOutcome {
-  const f = saleRow(id)
-  if (!f) return { ok: false, reason: 'not_found' }
-  const balanceCents = f.priceCents - paidSoFar(id)
-  return recordFinancePayment(id, { ...v, amount: balanceCents / 100, notes: 'Payoff' })
+export function payoff(id: number, v: Pick<RentPaymentValues, 'paidOn' | 'method'>): Promise<PaymentOutcome> {
+  return inTransaction(async () => {
+    const f = await saleRow(id)
+    if (!f) return { ok: false, reason: 'not_found' }
+    const balanceCents = f.priceCents - (await paidSoFar(id))
+    return recordFinancePayment(id, { ...v, amount: balanceCents / 100, notes: 'Payoff' })
+  })
 }
 
 /** Staff end the sale for non-payment: the car goes back to Preparation and the garage keeps what was paid. */
-export function defaultFinanceSale(id: number, v: DefaultFinanceSaleValues): 'ok' | 'not_found' | 'not_active' | 'before_start' {
-  return inTransaction(() => {
-    const f = saleRow(id)
+export function defaultFinanceSale(id: number, v: DefaultFinanceSaleValues): Promise<'ok' | 'not_found' | 'not_active' | 'before_start'> {
+  return inTransaction(async () => {
+    const f = await saleRow(id)
     if (!f) return 'not_found'
     if (f.status !== 'active') return 'not_active'
     if (v.defaultedOn < f.agreedOn) return 'before_start'
-    db.prepare(`UPDATE finance_sales SET status = 'defaulted', closed_on = ?, default_reason = ?, updated_at = ${sqlNow} WHERE id = ?`)
-      .run(v.defaultedOn, v.reason, id)
-    db.prepare(`UPDATE cars SET status = 'preparation', updated_at = ${sqlNow} WHERE id = ?`).run(f.carId)
+    await db.run(`UPDATE finance_sales SET status = 'defaulted', closed_on = ?, default_reason = ?, updated_at = ${sqlNow} WHERE id = ?`,
+      [v.defaultedOn, v.reason, id])
+    await db.run(`UPDATE cars SET status = 'preparation', updated_at = ${sqlNow} WHERE id = ?`, [f.carId])
     return 'ok'
   })
 }
 
-export function updateFinanceNotes(id: number, notes: string | null) {
-  return db.prepare(`UPDATE finance_sales SET notes = ?, updated_at = ${sqlNow} WHERE id = ?`).run(notes, id).changes > 0
+export async function updateFinanceNotes(id: number, notes: string | null) {
+  return (await db.run(`UPDATE finance_sales SET notes = ?, updated_at = ${sqlNow} WHERE id = ?`, [notes, id])).changes > 0
 }

@@ -27,26 +27,26 @@ type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, st
 
 export const listCustomers = createServerFn({ method: 'GET' })
   .validator(customerListSearchSchema)
-  .handler(({ data }) => customers.listCustomers(data))
+  .handler(async ({ data }) => await customers.listCustomers(data))
 
-export const listCustomerOptions = createServerFn({ method: 'GET' }).handler(() => customers.customerOptions())
+export const listCustomerOptions = createServerFn({ method: 'GET' }).handler(async () => await customers.customerOptions())
 
 export const getCustomer = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => {
-    const customer = customers.getCustomer(data.id)
+  .handler(async ({ data }) => {
+    const customer = await customers.getCustomer(data.id)
     if (!customer) throw notFound()
-    return { customer, documents: documents.documentsForCustomer(data.id) }
+    return { customer, documents: await documents.documentsForCustomer(data.id) }
   })
 
 export const createCustomer = createServerFn({ method: 'POST' })
   .validator(customerInputSchema)
-  .handler(({ data }): Result<{ id: number }> => ({ ok: true, value: { id: customers.insertCustomer(data) } }))
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => ({ ok: true, value: { id: await customers.insertCustomer(data) } }))
 
 export const updateCustomer = createServerFn({ method: 'POST' })
   .validator(updateCustomerSchema)
-  .handler(({ data }): Result<{ id: number }> => {
-    if (!customers.updateCustomer(data.id, data.values)) throw notFound()
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
+    if (!await customers.updateCustomer(data.id, data.values)) throw notFound()
     return { ok: true, value: { id: data.id } }
   })
 
@@ -54,8 +54,8 @@ export const deleteCustomer = createServerFn({ method: 'POST' })
   .validator(idSchema)
   .handler(async ({ data }): Promise<Result<null>> => {
     try {
-      const files = documents.documentFilesForCustomer(data.id)
-      customers.deleteCustomer(data.id) // document rows cascade; their files are removed below
+      const files = await documents.documentFilesForCustomer(data.id)
+      await customers.deleteCustomer(data.id) // document rows cascade; their files are removed below
       await Promise.all(files.map(documents.removeFile))
       return { ok: true, value: null }
     } catch (err) {
@@ -80,7 +80,7 @@ export const uploadCustomerDocument = createServerFn({ method: 'POST' })
     const parsed = documentUploadSchema.safeParse(data)
     if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
     const { customerId, kind, file } = parsed.data
-    if (!customers.getCustomer(customerId)) throw notFound()
+    if (!await customers.getCustomer(customerId)) throw notFound()
     const id = await documents.saveDocument(customerId, kind, file)
     if (id == null) return { ok: false, errors: { file: 'That file is not a JPEG, PNG or WebP image' } }
     return { ok: true, value: { id } }
@@ -103,21 +103,21 @@ function carWriteError(err: unknown): Result<never> {
 
 export const listCars = createServerFn({ method: 'GET' })
   .validator(carListSearchSchema)
-  .handler(({ data }) => cars.listCars(data))
+  .handler(async ({ data }) => await cars.listCars(data))
 
 export const getCar = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => {
-    const car = cars.getCar(data.id)
+  .handler(async ({ data }) => {
+    const car = await cars.getCar(data.id)
     if (!car) throw notFound()
     return car
   })
 
 export const createCar = createServerFn({ method: 'POST' })
   .validator(newCarInputSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      return { ok: true, value: { id: cars.insertCar(data) } }
+      return { ok: true, value: { id: await cars.insertCar(data) } }
     } catch (err) {
       return carWriteError(err)
     }
@@ -125,9 +125,9 @@ export const createCar = createServerFn({ method: 'POST' })
 
 export const updateCar = createServerFn({ method: 'POST' })
   .validator(updateCarSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      if (!cars.updateCar(data.id, data.values)) throw notFound()
+      if (!await cars.updateCar(data.id, data.values)) throw notFound()
       return { ok: true, value: { id: data.id } }
     } catch (err) {
       return carWriteError(err)
@@ -136,9 +136,9 @@ export const updateCar = createServerFn({ method: 'POST' })
 
 export const deleteCar = createServerFn({ method: 'POST' })
   .validator(idSchema)
-  .handler(({ data }): Result<null> => {
+  .handler(async ({ data }): Promise<Result<null>> => {
     try {
-      cars.deleteCar(data.id)
+      await cars.deleteCar(data.id)
       return { ok: true, value: null }
     } catch (err) {
       if (isForeignKeyViolation(err))

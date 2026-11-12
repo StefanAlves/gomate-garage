@@ -33,29 +33,36 @@ function referenceError(err: unknown): Result<never> {
 }
 
 /** Vehicle + customer choices for the fine, toll and transaction forms. */
-export const listPickerOptions = createServerFn({ method: 'GET' }).handler(() => ({
-  cars: cars.carOptions(),
-  customers: customers.customerOptions(),
-}))
+export const listPickerOptions = createServerFn({ method: 'GET' }).handler(async () => {
+  const [carOptions, customerOptions] = await Promise.all([cars.carOptions(), customers.customerOptions()])
+  return { cars: carOptions, customers: customerOptions }
+})
 
 // ---- Overview ----------------------------------------------------------------
 
 export const getFleetOverview = createServerFn({ method: 'GET' })
   .validator(overviewSearchSchema)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
     const today = garageToday()
+    // In parallel: on Turso each query is a network round trip.
+    const [totals, statusCounts, unpaid, expiring, overdueFinance, maintenanceCounts, behind] = await Promise.all([
+      ledger.ledgerTotals({ period: data.period }, today),
+      cars.stockStatusCounts(),
+      charges.unpaidCharges(),
+      cars.expiringCompliance(addDays(today, 30)),
+      finance.overdueFinanceSales(today),
+      maintenance.maintenanceCounts(today),
+      rentals.listRentals({ status: 'active', show: 'behind', sort: 'arrears' }, today),
+    ])
     return {
       today,
-      totals: ledger.ledgerTotals({ period: data.period }, today),
-      statusCounts: cars.stockStatusCounts(),
-      unpaid: charges.unpaidCharges(),
-      expiring: cars.expiringCompliance(addDays(today, 30)),
-      overdueFinance: finance.overdueFinanceSales(today),
-      maintenance: maintenance.maintenanceCounts(today),
-      rentalsBehind: (() => {
-        const behind = rentals.listRentals({ status: 'active', show: 'behind', sort: 'arrears' }, today)
-        return { count: behind.length, owedCents: behind.reduce((s, r) => s + r.owedCents, 0) }
-      })(),
+      totals,
+      statusCounts,
+      unpaid,
+      expiring,
+      overdueFinance,
+      maintenance: maintenanceCounts,
+      rentalsBehind: { count: behind.length, owedCents: behind.reduce((s, r) => s + r.owedCents, 0) },
     }
   })
 
@@ -63,12 +70,12 @@ export const getFleetOverview = createServerFn({ method: 'GET' })
 
 export const listStock = createServerFn({ method: 'GET' })
   .validator(stockSearchSchema)
-  .handler(({ data }) => cars.listStock(data))
+  .handler(async ({ data }) => await cars.listStock(data))
 
 export const updateCarStock = createServerFn({ method: 'POST' })
   .validator(updateCarStockSchema)
-  .handler(({ data }): Result<{ id: number }> => {
-    const outcome = cars.updateCarStock(data.id, data.values)
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
+    const outcome = await cars.updateCarStock(data.id, data.values)
     if (outcome === 'not_found') throw notFound()
     if (outcome === 'status_locked')
       return { ok: false, errors: { status: 'This car is out with a customer. Its status changes when the rental or sale ends.' } }
@@ -78,24 +85,24 @@ export const updateCarStock = createServerFn({ method: 'POST' })
 /** Everything the car page's Stock, Fines, Tolls and Money tabs show. */
 export const getCarFleetRecords = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => ({
-    fines: charges.chargesForCar(data.id, 'fine'),
-    tolls: charges.chargesForCar(data.id, 'toll'),
-    transactions: ledger.transactionsForCar(data.id),
-    totals: ledger.ledgerTotals({ car: data.id }, garageToday()),
+  .handler(async ({ data }) => ({
+    fines: await charges.chargesForCar(data.id, 'fine'),
+    tolls: await charges.chargesForCar(data.id, 'toll'),
+    transactions: await ledger.transactionsForCar(data.id),
+    totals: await ledger.ledgerTotals({ car: data.id }, garageToday()),
   }))
 
 // ---- Fines & tolls ----------------------------------------------------------------
 
 export const listCharges = createServerFn({ method: 'GET' })
   .validator(chargeListInputSchema)
-  .handler(({ data }) => charges.listCharges(data))
+  .handler(async ({ data }) => await charges.listCharges(data))
 
 export const createCharge = createServerFn({ method: 'POST' })
   .validator(chargeInputSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      return { ok: true, value: { id: charges.insertCharge(data) } }
+      return { ok: true, value: { id: await charges.insertCharge(data) } }
     } catch (err) {
       return referenceError(err)
     }
@@ -103,9 +110,9 @@ export const createCharge = createServerFn({ method: 'POST' })
 
 export const updateCharge = createServerFn({ method: 'POST' })
   .validator(updateChargeSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      if (!charges.updateCharge(data.id, data.values)) throw notFound()
+      if (!await charges.updateCharge(data.id, data.values)) throw notFound()
       return { ok: true, value: { id: data.id } }
     } catch (err) {
       return referenceError(err)
@@ -114,8 +121,8 @@ export const updateCharge = createServerFn({ method: 'POST' })
 
 export const deleteCharge = createServerFn({ method: 'POST' })
   .validator(idSchema)
-  .handler(({ data }): Result<null> => {
-    charges.deleteCharge(data.id)
+  .handler(async ({ data }): Promise<Result<null>> => {
+    await charges.deleteCharge(data.id)
     return { ok: true, value: null }
   })
 
@@ -123,17 +130,17 @@ export const deleteCharge = createServerFn({ method: 'POST' })
 
 export const listTransactions = createServerFn({ method: 'GET' })
   .validator(transactionListSearchSchema)
-  .handler(({ data }) => ledger.listTransactions(data, garageToday()))
+  .handler(async ({ data }) => await ledger.listTransactions(data, garageToday()))
 
 export const exportTransactions = createServerFn({ method: 'GET' })
   .validator(transactionListSearchSchema)
-  .handler(({ data }) => ledger.exportTransactions(data, garageToday()))
+  .handler(async ({ data }) => await ledger.exportTransactions(data, garageToday()))
 
 export const createTransaction = createServerFn({ method: 'POST' })
   .validator(transactionInputSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      return { ok: true, value: { id: ledger.insertTransaction(data) } }
+      return { ok: true, value: { id: await ledger.insertTransaction(data) } }
     } catch (err) {
       return referenceError(err)
     }
@@ -141,9 +148,9 @@ export const createTransaction = createServerFn({ method: 'POST' })
 
 export const updateTransaction = createServerFn({ method: 'POST' })
   .validator(updateTransactionSchema)
-  .handler(({ data }): Result<{ id: number }> => {
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
     try {
-      if (!ledger.updateTransaction(data.id, data.values)) throw notFound()
+      if (!await ledger.updateTransaction(data.id, data.values)) throw notFound()
       return { ok: true, value: { id: data.id } }
     } catch (err) {
       return referenceError(err)
@@ -152,7 +159,7 @@ export const updateTransaction = createServerFn({ method: 'POST' })
 
 export const deleteTransaction = createServerFn({ method: 'POST' })
   .validator(idSchema)
-  .handler(({ data }): Result<null> => {
-    ledger.deleteTransaction(data.id)
+  .handler(async ({ data }): Promise<Result<null>> => {
+    await ledger.deleteTransaction(data.id)
     return { ok: true, value: null }
   })

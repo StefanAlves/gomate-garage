@@ -14,36 +14,36 @@ type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, st
 
 export const listRentals = createServerFn({ method: 'GET' })
   .validator(rentalListSearchSchema)
-  .handler(({ data }) => ({ items: rentals.listRentals(data, garageToday()) }))
+  .handler(async ({ data }) => ({ items: await rentals.listRentals(data, garageToday()) }))
 
 export const getRental = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
     const today = garageToday()
-    const found = rentals.getRental(data.id, today)
+    const found = await rentals.getRental(data.id, today)
     if (!found) throw notFound()
     return { ...found, today }
   })
 
 export const rentalsForCustomer = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => rentals.rentalsForCustomer(data.id, garageToday()))
+  .handler(async ({ data }) => await rentals.rentalsForCustomer(data.id, garageToday()))
 
 export const rentalsForCar = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => rentals.rentalsForCar(data.id, garageToday()))
+  .handler(async ({ data }) => await rentals.rentalsForCar(data.id, garageToday()))
 
 /** Ready Rental cars and customers (with licence-on-file) for the Start rental form. */
-export const startRentalOptions = createServerFn({ method: 'GET' }).handler(() => ({
-  cars: rentals.availableRentalCars(),
-  customers: rentals.rentalCustomerOptions(),
+export const startRentalOptions = createServerFn({ method: 'GET' }).handler(async () => ({
+  cars: await rentals.availableRentalCars(),
+  customers: await rentals.rentalCustomerOptions(),
   today: garageToday(),
 }))
 
 export const startRental = createServerFn({ method: 'POST' })
   .validator(startRentalInputSchema)
-  .handler(({ data }): Result<{ id: number }> => {
-    const out = rentals.startRental(data)
+  .handler(async ({ data }): Promise<Result<{ id: number }>> => {
+    const out = await rentals.startRental(data)
     if (out.ok) return { ok: true, value: { id: out.id } }
     return out.reason === 'car_not_available'
       ? { ok: false, errors: { carId: 'This car is no longer Ready to rent. Pick another one.' } }
@@ -52,15 +52,15 @@ export const startRental = createServerFn({ method: 'POST' })
 
 export const recordRentPayment = createServerFn({ method: 'POST' })
   .validator(recordRentPaymentSchema)
-  .handler(({ data }): Result<null> => {
-    if (rentals.recordRentPayment(data.id, data.values) === 'not_found') throw notFound()
+  .handler(async ({ data }): Promise<Result<null>> => {
+    if (await rentals.recordRentPayment(data.id, data.values) === 'not_found') throw notFound()
     return { ok: true, value: null }
   })
 
 export const adjustRent = createServerFn({ method: 'POST' })
   .validator(adjustRentSchema)
-  .handler(({ data }): Result<null> => {
-    switch (rentals.adjustRent(data.id, data.values)) {
+  .handler(async ({ data }): Promise<Result<null>> => {
+    switch (await rentals.adjustRent(data.id, data.values)) {
       case 'not_found':
         throw notFound()
       case 'not_active':
@@ -74,16 +74,16 @@ export const adjustRent = createServerFn({ method: 'POST' })
 
 export const getSettlementPreview = createServerFn({ method: 'GET' })
   .validator(settlementPreviewSchema)
-  .handler(({ data }) => {
-    const preview = rentals.settlementPreview(data.id, data.returnedOn)
+  .handler(async ({ data }) => {
+    const preview = await rentals.settlementPreview(data.id, data.returnedOn)
     if (preview === 'not_found') throw notFound()
     return preview
   })
 
 export const returnRental = createServerFn({ method: 'POST' })
   .validator(returnRentalSchema)
-  .handler(({ data }): Result<{ refundCents: number; shortfallCents: number }> => {
-    const out = rentals.returnRental(data.id, data.values)
+  .handler(async ({ data }): Promise<Result<{ refundCents: number; shortfallCents: number }>> => {
+    const out = await rentals.returnRental(data.id, data.values)
     if (out.ok) return { ok: true, value: { refundCents: out.refundCents, shortfallCents: out.shortfallCents } }
     if (out.reason === 'not_found') throw notFound()
     return out.reason === 'not_active'

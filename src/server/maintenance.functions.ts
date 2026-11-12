@@ -12,7 +12,9 @@ import * as maintenance from './maintenance.server'
 type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> }
 
 /** Field errors for a refused reading or service; `dateField` names the form's date input. */
-function readingError(reason: Exclude<ReturnType<typeof maintenance.recordReading>, { ok: true }>['reason'], dateField: string): Result<never> {
+type RecordFailure = Exclude<Awaited<ReturnType<typeof maintenance.recordReading>>, { ok: true }>['reason']
+
+function readingError(reason: RecordFailure, dateField: string): Result<never> {
   switch (reason) {
     case 'not_found':
       throw notFound()
@@ -29,24 +31,29 @@ function readingError(reason: Exclude<ReturnType<typeof maintenance.recordReadin
 
 export const getMaintenance = createServerFn({ method: 'GET' })
   .validator(idSchema)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
     const today = garageToday()
-    const found = maintenance.getMaintenance(data.id, today)
+    const found = await maintenance.getMaintenance(data.id, today)
     if (!found) throw notFound()
     return { ...found, today }
   })
 
 export const listMaintenance = createServerFn({ method: 'GET' })
   .validator(maintenanceListSearchSchema)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
     const today = garageToday()
-    return { today, items: maintenance.dueSoonList(today, data.show), counts: maintenance.maintenanceCounts(today) }
+    const all = await maintenance.dueSoonList(today, 'all')
+    return {
+      today,
+      items: data.show === 'all' ? all : all.filter(maintenance.isDue),
+      counts: await maintenance.maintenanceCounts(today, all),
+    }
   })
 
 export const setServiceInterval = createServerFn({ method: 'POST' })
   .validator(setServiceIntervalSchema)
-  .handler(({ data }): Result<null> => {
-    switch (maintenance.setServiceInterval(data.id, data.values)) {
+  .handler(async ({ data }): Promise<Result<null>> => {
+    switch (await maintenance.setServiceInterval(data.id, data.values)) {
       case 'not_found':
         throw notFound()
       case 'not_rental':
@@ -58,29 +65,29 @@ export const setServiceInterval = createServerFn({ method: 'POST' })
 
 export const recordReading = createServerFn({ method: 'POST' })
   .validator(recordReadingSchema)
-  .handler(({ data }): Result<null> => {
-    const out = maintenance.recordReading(data.id, data.values, garageToday())
+  .handler(async ({ data }): Promise<Result<null>> => {
+    const out = await maintenance.recordReading(data.id, data.values, garageToday())
     return out.ok ? { ok: true, value: null } : readingError(out.reason, 'readOn')
   })
 
 export const deleteReading = createServerFn({ method: 'POST' })
   .validator(idSchema)
-  .handler(({ data }): Result<null> => {
-    if (maintenance.deleteReading(data.id) === 'from_service')
+  .handler(async ({ data }): Promise<Result<null>> => {
+    if (await maintenance.deleteReading(data.id) === 'from_service')
       return { ok: false, errors: { form: 'This reading came from a service. Delete the service instead.' } }
     return { ok: true, value: null }
   })
 
 export const recordService = createServerFn({ method: 'POST' })
   .validator(recordServiceSchema)
-  .handler(({ data }): Result<null> => {
-    const out = maintenance.recordService(data.id, data.values, garageToday())
+  .handler(async ({ data }): Promise<Result<null>> => {
+    const out = await maintenance.recordService(data.id, data.values, garageToday())
     return out.ok ? { ok: true, value: null } : readingError(out.reason, 'servicedOn')
   })
 
 export const deleteService = createServerFn({ method: 'POST' })
   .validator(idSchema)
-  .handler(({ data }): Result<null> => {
-    maintenance.deleteService(data.id)
+  .handler(async ({ data }): Promise<Result<null>> => {
+    await maintenance.deleteService(data.id)
     return { ok: true, value: null }
   })

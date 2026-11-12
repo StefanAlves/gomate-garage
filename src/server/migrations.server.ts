@@ -1,5 +1,7 @@
 import '@tanstack/react-start/server-only'
-import type { DatabaseSync } from 'node:sqlite'
+import { mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { createClient, LibsqlBatchError, type Client } from '@libsql/client'
 
 export const sqlNow = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
 const now = sqlNow
@@ -7,6 +9,8 @@ const now = sqlNow
 /*
  * Schema migrations, tracked with PRAGMA user_version. Each entry runs once,
  * in order, inside a transaction. Never edit a shipped migration; add a new one.
+ * They run from `npm run migrate` (scripts/migrate.ts), never when the server
+ * starts, except for the tests' in-memory database.
  */
 export const migrations: string[] = [
   // 1: original customer + car registry.
@@ -393,28 +397,94 @@ export const migrations: string[] = [
   `,
 ]
 
-/** Runs every migration after the database's user_version, up to `target` (default: all). */
-export function migrate(db: DatabaseSync, target = migrations.length) {
-  const { user_version: current } = db.prepare('PRAGMA user_version').get() as { user_version: number }
-  if (current >= target) return
-  // Table rebuilds drop tables that others reference, so FK checks are
-  // switched off for the duration and verified before committing.
-  db.exec('PRAGMA foreign_keys = OFF')
-  try {
-    for (let v = current; v < target; v++) {
-      db.exec('BEGIN')
-      try {
-        db.exec(migrations[v]!)
-        const broken = db.prepare('PRAGMA foreign_key_check').all()
-        if (broken.length) throw new Error(`Migration ${v + 1} left ${broken.length} broken foreign keys`)
-        db.exec(`PRAGMA user_version = ${v + 1}`)
-        db.exec('COMMIT')
-      } catch (err) {
-        db.exec('ROLLBACK')
-        throw err
-      }
+// ---- Runner -----------------------------------------------------------------
+
+/**
+ * Opens the database from the environment. An explicit DATABASE_PATH (a file,
+ * or `:memory:`) always wins, so `npm run dev` and the tests never touch Turso
+ * even when .env holds its credentials. Otherwise Turso when
+ * TURSO_DATABASE_URL is set (Vercel), else data/garage.db. Kept here, free of
+ * app imports, so scripts can use it too.
+ */
+export function openClient(env: Record<string, string | undefined>): Client {
+  if (env.TURSO_DATABASE_URL && !env.DATABASE_PATH)
+    return createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
+  const path = env.DATABASE_PATH || 'data/garage.db'
+  if (path === ':memory:') return createClient({ url: ':memory:' })
+  const file = resolve(path)
+  mkdirSync(dirname(file), { recursive: true })
+  return createClient({ url: `file:${file}` })
+}
+
+export async function schemaVersion(client: Client) {
+  const rs = await client.execute('PRAGMA user_version')
+  return Number(rs.rows[0]?.[0] ?? 0)
+}
+
+export const latestVersion = migrations.length
+
+/**
+ * Throws unless the schema is the version this code expects. With `migrate`
+ * (tests only), brings it up to date instead.
+ */
+export async function checkSchema(client: Client, { migrate: run = false } = {}) {
+  if (run) return void (await migrate(client))
+  const current = await schemaVersion(client)
+  if (current === latestVersion) return
+  throw new Error(
+    current < latestVersion
+      ? `The database is at schema version ${current}; this code needs ${latestVersion}. Back it up, then run \`npm run migrate\`.`
+      : `The database is at schema version ${current}, newer than this code (${latestVersion}). Deploy the newer code.`,
+  )
+}
+
+/** Splits a migration into statements at top-level semicolons (not in strings or comments). */
+export function splitStatements(sql: string): string[] {
+  const out: string[] = []
+  let start = 0
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]
+    if (ch === "'" || ch === '"') {
+      i = sql.indexOf(ch, i + 1)
+      if (i < 0) break
+    } else if (ch === '-' && sql[i + 1] === '-') {
+      i = sql.indexOf('\n', i)
+      if (i < 0) break
+    } else if (ch === '/' && sql[i + 1] === '*') {
+      i = sql.indexOf('*/', i + 2) + 1
+      if (i <= 0) break
+    } else if (ch === ';') {
+      out.push(sql.slice(start, i))
+      start = i + 1
     }
-  } finally {
-    db.exec('PRAGMA foreign_keys = ON')
+  }
+  out.push(sql.slice(start))
+  const hasCode = (stmt: string) => stmt.replace(/--[^\n]*/g, '').trim() !== ''
+  return out.filter(hasCode).map((stmt) => stmt.trim())
+}
+
+/**
+ * Fails the statement (and with it the migration) when a foreign key is
+ * broken. Evaluating json() on non-JSON is the only way to raise an error from
+ * a plain SELECT; the runner turns it back into a readable message.
+ */
+const foreignKeyGuard = `SELECT CASE WHEN EXISTS (SELECT 1 FROM pragma_foreign_key_check) THEN json('broken foreign keys') END`
+
+/**
+ * Runs every migration after the database's user_version, up to `target`
+ * (default: all). Each one is a single batch with foreign keys switched off
+ * (table rebuilds drop tables that others reference), checked before it
+ * commits.
+ */
+export async function migrate(client: Client, target = migrations.length) {
+  for (let v = await schemaVersion(client); v < target; v++) {
+    const statements = [...splitStatements(migrations[v]!), foreignKeyGuard, `PRAGMA user_version = ${v + 1}`]
+    try {
+      await client.migrate(statements)
+    } catch (err) {
+      if (err instanceof LibsqlBatchError && err.statementIndex === statements.length - 2)
+        throw new Error(`Migration ${v + 1} left broken foreign keys`)
+      throw err
+    }
   }
 }

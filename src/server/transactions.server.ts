@@ -99,62 +99,56 @@ function filters(
  * One page of the ledger plus totals. Totals follow the period, car and search
  * filters but not category / method, so the tiles always show the full picture.
  */
-export function listTransactions(search: z.output<typeof transactionListSearchSchema>, today: string) {
+export async function listTransactions(search: z.output<typeof transactionListSearchSchema>, today: string) {
   const { page, size } = search
   const { where, params } = filters(search, today)
-  const { total } = db.prepare(`SELECT COUNT(*) AS total ${from} ${where}`).get(params) as { total: number }
+  const { total } = (await db.get<{ total: number }>(`SELECT COUNT(*) AS total ${from} ${where}`, params))!
   const pageCount = Math.max(1, Math.ceil(total / size))
   const current = Math.min(page, pageCount)
-  const items = db
-    .prepare(`SELECT ${columns} ${from} ${where} ORDER BY t.occurred_on DESC, t.id DESC LIMIT :limit OFFSET :offset`)
-    .all({ ...params, limit: size, offset: (current - 1) * size }) as unknown as Transaction[]
-  const totals = ledgerTotals({ q: search.q, period: search.period, car: search.car }, today)
+  const items = await db.all<Transaction>(
+    `SELECT ${columns} ${from} ${where} ORDER BY t.occurred_on DESC, t.id DESC LIMIT :limit OFFSET :offset`,
+    { ...params, limit: size, offset: (current - 1) * size },
+  )
+  const totals = await ledgerTotals({ q: search.q, period: search.period, car: search.car }, today)
   return { items, total, page: current, pageCount, totals }
 }
 
 /** Every entry matching the filters (no paging), oldest first, for CSV export. */
 export function exportTransactions(search: z.output<typeof transactionListSearchSchema>, today: string) {
   const { where, params } = filters(search, today)
-  return db
-    .prepare(`SELECT ${columns} ${from} ${where} ORDER BY t.occurred_on ASC, t.id ASC`)
-    .all(params) as unknown as Transaction[]
+  return db.all<Transaction>(`SELECT ${columns} ${from} ${where} ORDER BY t.occurred_on ASC, t.id ASC`, params)
 }
 
-export function ledgerTotals(search: { q?: string; period?: Period; car?: number }, today: string) {
+export async function ledgerTotals(search: { q?: string; period?: Period; car?: number }, today: string) {
   const { where, params } = filters(search, today)
-  return withPnl(db.prepare(`SELECT ${totalsColumns} ${from} ${where}`).get(params) as unknown as RawTotals)
+  return withPnl((await db.get<RawTotals>(`SELECT ${totalsColumns} ${from} ${where}`, params))!)
 }
 
 export function transactionsForCar(carId: number) {
-  return db
-    .prepare(`SELECT ${columns} ${from} WHERE t.car_id = ? ORDER BY t.occurred_on DESC, t.id DESC`)
-    .all(carId) as unknown as Transaction[]
+  return db.all<Transaction>(`SELECT ${columns} ${from} WHERE t.car_id = ? ORDER BY t.occurred_on DESC, t.id DESC`, [carId])
 }
 
 const toParams = (v: TransactionValues) => ({ ...v, amount: toCents(v.amount) })
 
-export function insertTransaction(v: TransactionValues) {
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO transactions (car_id, customer_id, occurred_on, category, amount_cents, method, notes)
-       VALUES (:carId, :customerId, :occurredOn, :category, :amount, :method, :notes)`,
-    )
-    .run(toParams(v))
-  return Number(lastInsertRowid)
-}
-
-export function updateTransaction(id: number, v: TransactionValues) {
-  return (
-    db
-      .prepare(
-        `UPDATE transactions SET car_id = :carId, customer_id = :customerId, occurred_on = :occurredOn,
-           category = :category, amount_cents = :amount, method = :method, notes = :notes, updated_at = ${sqlNow}
-         WHERE id = :id`,
-      )
-      .run({ ...toParams(v), id }).changes > 0
+export async function insertTransaction(v: TransactionValues) {
+  const { lastInsertRowid } = await db.run(
+    `INSERT INTO transactions (car_id, customer_id, occurred_on, category, amount_cents, method, notes)
+     VALUES (:carId, :customerId, :occurredOn, :category, :amount, :method, :notes)`,
+    toParams(v),
   )
+  return lastInsertRowid
 }
 
-export function deleteTransaction(id: number) {
-  return db.prepare('DELETE FROM transactions WHERE id = ?').run(id).changes > 0
+export async function updateTransaction(id: number, v: TransactionValues) {
+  const { changes } = await db.run(
+    `UPDATE transactions SET car_id = :carId, customer_id = :customerId, occurred_on = :occurredOn,
+       category = :category, amount_cents = :amount, method = :method, notes = :notes, updated_at = ${sqlNow}
+     WHERE id = :id`,
+    { ...toParams(v), id },
+  )
+  return changes > 0
+}
+
+export async function deleteTransaction(id: number) {
+  return (await db.run('DELETE FROM transactions WHERE id = ?', [id])).changes > 0
 }

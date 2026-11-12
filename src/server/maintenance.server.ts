@@ -26,30 +26,30 @@ export interface Service {
 type CarRow = { purpose: 'rental' | 'sale'; km: number | null; months: number | null; createdOn: string }
 
 const carRow = (carId: number) =>
-  db.prepare(
+  db.get<CarRow>(
     `SELECT purpose, service_interval_km AS km, service_interval_months AS months, substr(created_at, 1, 10) AS createdOn
-     FROM cars WHERE id = ?`,
-  ).get(carId) as CarRow | undefined
+     FROM cars WHERE id = ?`, [carId],
+  )
 
 const readingsOf = (carId: number) =>
-  db.prepare(
+  db.all<OdometerReading>(
     `SELECT id, read_on AS readOn, km, rental_id AS rentalId, service_id AS serviceId, note
-     FROM odometer_readings WHERE car_id = ? ORDER BY read_on DESC, id DESC`,
-  ).all(carId) as unknown as OdometerReading[]
+     FROM odometer_readings WHERE car_id = ? ORDER BY read_on DESC, id DESC`, [carId],
+  )
 
 const servicesOf = (carId: number) =>
-  db.prepare(
+  db.all<Service>(
     `SELECT id, serviced_on AS servicedOn, km, description, cost_cents AS costCents, transaction_id AS transactionId
-     FROM services WHERE car_id = ? ORDER BY serviced_on DESC, id DESC`,
-  ).all(carId) as unknown as Service[]
+     FROM services WHERE car_id = ? ORDER BY serviced_on DESC, id DESC`, [carId],
+  )
 
 /** Sets the cached odometer to the latest reading (by date, then entry order). */
-function refreshOdometer(carId: number) {
-  db.prepare(
+async function refreshOdometer(carId: number) {
+  await db.run(
     `UPDATE cars SET mileage_km = (SELECT km FROM odometer_readings WHERE car_id = :carId ORDER BY read_on DESC, id DESC LIMIT 1),
        updated_at = ${sqlNow}
-     WHERE id = :carId`,
-  ).run({ carId })
+     WHERE id = :carId`, { carId },
+  )
 }
 
 /** Readings come back newest first; the pure calculation doesn't mind the order. */
@@ -65,11 +65,10 @@ function dueFor(car: CarRow, readings: readonly OdometerReading[], services: rea
 }
 
 /** Everything the Maintenance tab shows. Null for an unknown car. */
-export function getMaintenance(carId: number, today: string) {
-  const car = carRow(carId)
+export async function getMaintenance(carId: number, today: string) {
+  const car = await carRow(carId)
   if (!car) return null
-  const readings = readingsOf(carId)
-  const services = servicesOf(carId)
+  const [readings, services] = await Promise.all([readingsOf(carId), servicesOf(carId)])
   return {
     interval: { km: car.km, months: car.months },
     readings,
@@ -78,37 +77,39 @@ export function getMaintenance(carId: number, today: string) {
   }
 }
 
-export function setServiceInterval(carId: number, v: ServiceIntervalValues): 'ok' | 'not_found' | 'not_rental' {
-  const car = carRow(carId)
+export async function setServiceInterval(carId: number, v: ServiceIntervalValues): Promise<'ok' | 'not_found' | 'not_rental'> {
+  const car = await carRow(carId)
   if (!car) return 'not_found'
   if (car.purpose !== 'rental') return 'not_rental'
-  db.prepare(
+  await db.run(
     `UPDATE cars SET service_interval_km = :km, service_interval_months = :months, updated_at = ${sqlNow} WHERE id = :carId`,
-  ).run({ carId, km: v.km, months: v.months })
+    { carId, km: v.km, months: v.months },
+  )
   return 'ok'
 }
 
 type RecordFailure = 'not_found' | 'not_rental' | 'future' | 'lower_than_earlier' | 'higher_than_later'
 
 /** Checks a km reading against the car and its history, before anything is written. */
-function checkNewReading(carId: number, readOn: string, km: number, correction: boolean, today: string): RecordFailure | null {
-  const car = carRow(carId)
+async function checkNewReading(carId: number, readOn: string, km: number, correction: boolean, today: string): Promise<RecordFailure | null> {
+  const car = await carRow(carId)
   if (!car) return 'not_found'
   if (car.purpose !== 'rental') return 'not_rental'
   if (readOn > today) return 'future'
   if (correction) return null
-  const fit = checkReading(readingsOf(carId), { readOn, km })
+  const fit = checkReading(await readingsOf(carId), { readOn, km })
   return fit === 'ok' ? null : fit
 }
 
-function insertReading(carId: number, readOn: string, km: number, note: string | null, serviceId: number | null) {
-  const { lastInsertRowid } = db.prepare(
+async function insertReading(carId: number, readOn: string, km: number, note: string | null, serviceId: number | null) {
+  const { lastInsertRowid } = await db.run(
     `INSERT INTO odometer_readings (car_id, read_on, km, note, service_id, rental_id)
      VALUES (:carId, :readOn, :km, :note, :serviceId,
        (SELECT id FROM rentals WHERE car_id = :carId AND status = 'active' AND start_date <= :readOn))`,
-  ).run({ carId, readOn, km, note, serviceId })
-  refreshOdometer(carId)
-  return Number(lastInsertRowid)
+    { carId, readOn, km, note, serviceId },
+  )
+  await refreshOdometer(carId)
+  return lastInsertRowid
 }
 
 /**
@@ -117,23 +118,26 @@ function insertReading(carId: number, readOn: string, km: number, note: string |
  * A reading taken while the car is rented is linked to that Rental.
  */
 export function recordReading(carId: number, v: OdometerReadingValues, today: string):
-  { ok: true; id: number } | { ok: false; reason: RecordFailure } {
-  const failure = checkNewReading(carId, v.readOn, v.km, v.correction, today)
-  if (failure) return { ok: false, reason: failure }
-  return { ok: true, id: inTransaction(() => insertReading(carId, v.readOn, v.km, v.note, null)) }
+  Promise<{ ok: true; id: number } | { ok: false; reason: RecordFailure }> {
+  return inTransaction(async () => {
+    const failure = await checkNewReading(carId, v.readOn, v.km, v.correction, today)
+    if (failure) return { ok: false, reason: failure }
+    return { ok: true, id: await insertReading(carId, v.readOn, v.km, v.note, null) }
+  })
 }
 
 /** Removes a mistaken reading. A service's reading goes only with its service. */
-export function deleteReading(id: number): 'ok' | 'not_found' | 'from_service' {
-  const row = db.prepare('SELECT car_id AS carId, service_id AS serviceId FROM odometer_readings WHERE id = ?').get(id) as
-    { carId: number; serviceId: number | null } | undefined
-  if (!row) return 'not_found'
-  if (row.serviceId != null) return 'from_service'
-  inTransaction(() => {
-    db.prepare('DELETE FROM odometer_readings WHERE id = ?').run(id)
-    refreshOdometer(row.carId)
+export function deleteReading(id: number): Promise<'ok' | 'not_found' | 'from_service'> {
+  return inTransaction(async () => {
+    const row = await db.get<{ carId: number; serviceId: number | null }>(
+      'SELECT car_id AS carId, service_id AS serviceId FROM odometer_readings WHERE id = ?', [id],
+    )
+    if (!row) return 'not_found'
+    if (row.serviceId != null) return 'from_service'
+    await db.run('DELETE FROM odometer_readings WHERE id = ?', [id])
+    await refreshOdometer(row.carId)
+    return 'ok'
   })
-  return 'ok'
 }
 
 /**
@@ -142,43 +146,43 @@ export function deleteReading(id: number): 'ok' | 'not_found' | 'from_service' {
  * countdown to the next service.
  */
 export function recordService(carId: number, v: ServiceValues, today: string):
-  { ok: true; id: number } | { ok: false; reason: RecordFailure } {
-  const failure = checkNewReading(carId, v.servicedOn, v.km, v.correction, today)
-  if (failure) return { ok: false, reason: failure }
-  const costCents = toCents(v.cost) ?? 0
-  const id = inTransaction(() => {
-    const transactionId = costCents > 0 ? insertExpense(carId, v.servicedOn, costCents, v.method, v.description) : null
-    const serviceId = Number(
-      db.prepare(
-        `INSERT INTO services (car_id, serviced_on, km, description, cost_cents, transaction_id)
-         VALUES (:carId, :servicedOn, :km, :description, :costCents, :transactionId)`,
-      ).run({ carId, servicedOn: v.servicedOn, km: v.km, description: v.description, costCents, transactionId }).lastInsertRowid,
+  Promise<{ ok: true; id: number } | { ok: false; reason: RecordFailure }> {
+  return inTransaction(async () => {
+    const failure = await checkNewReading(carId, v.servicedOn, v.km, v.correction, today)
+    if (failure) return { ok: false, reason: failure }
+    const costCents = toCents(v.cost) ?? 0
+    const transactionId = costCents > 0 ? await insertExpense(carId, v.servicedOn, costCents, v.method, v.description) : null
+    const { lastInsertRowid: serviceId } = await db.run(
+      `INSERT INTO services (car_id, serviced_on, km, description, cost_cents, transaction_id)
+       VALUES (:carId, :servicedOn, :km, :description, :costCents, :transactionId)`,
+      { carId, servicedOn: v.servicedOn, km: v.km, description: v.description, costCents, transactionId },
     )
-    insertReading(carId, v.servicedOn, v.km, null, serviceId)
-    return serviceId
+    await insertReading(carId, v.servicedOn, v.km, null, serviceId)
+    return { ok: true, id: serviceId }
   })
-  return { ok: true, id }
 }
 
-function insertExpense(carId: number, occurredOn: string, amountCents: number, method: PaymentMethod | null, description: string) {
-  const { lastInsertRowid } = db.prepare(
+async function insertExpense(carId: number, occurredOn: string, amountCents: number, method: PaymentMethod | null, description: string) {
+  const { lastInsertRowid } = await db.run(
     `INSERT INTO transactions (car_id, occurred_on, category, amount_cents, method, notes)
      VALUES (?, ?, 'expense', ?, ?, ?)`,
-  ).run(carId, occurredOn, amountCents, method, `Service: ${description}`.slice(0, 500))
-  return Number(lastInsertRowid)
+    [carId, occurredOn, amountCents, method, `Service: ${description}`.slice(0, 500)],
+  )
+  return lastInsertRowid
 }
 
 /** Removes a mistaken service with its reading and expense. */
-export function deleteService(id: number): 'ok' | 'not_found' {
-  const row = db.prepare('SELECT car_id AS carId, transaction_id AS transactionId FROM services WHERE id = ?').get(id) as
-    { carId: number; transactionId: number | null } | undefined
-  if (!row) return 'not_found'
-  inTransaction(() => {
-    db.prepare('DELETE FROM services WHERE id = ?').run(id) // its reading cascades
-    if (row.transactionId != null) db.prepare('DELETE FROM transactions WHERE id = ?').run(row.transactionId)
-    refreshOdometer(row.carId)
+export function deleteService(id: number): Promise<'ok' | 'not_found'> {
+  return inTransaction(async () => {
+    const row = await db.get<{ carId: number; transactionId: number | null }>(
+      'SELECT car_id AS carId, transaction_id AS transactionId FROM services WHERE id = ?', [id],
+    )
+    if (!row) return 'not_found'
+    await db.run('DELETE FROM services WHERE id = ?', [id]) // its reading cascades
+    if (row.transactionId != null) await db.run('DELETE FROM transactions WHERE id = ?', [row.transactionId])
+    await refreshOdometer(row.carId)
+    return 'ok'
   })
-  return 'ok'
 }
 
 // ---- Due-soon list ---------------------------------------------------------------
@@ -196,6 +200,8 @@ export interface MaintenanceListItem {
   due: MaintenanceDue
 }
 
+export const isDue = (i: MaintenanceListItem) => i.due.state === 'overdue' || i.due.state === 'due_soon'
+
 const urgency: Record<MaintenanceState, number> = { overdue: 0, due_soon: 1, no_interval: 2, ok: 3 }
 
 /** How close a car is to its next service, in days, counting km at the car's recent pace (or 1,000 km ≈ 30 days). */
@@ -208,8 +214,8 @@ const closeness = (d: MaintenanceDue) => {
  * Rental cars with their service status and current Renter, most urgent
  * first. `due` keeps only those overdue or due soon.
  */
-export function dueSoonList(today: string, show: 'due' | 'all'): MaintenanceListItem[] {
-  const cars = db.prepare(
+export async function dueSoonList(today: string, show: 'due' | 'all'): Promise<MaintenanceListItem[]> {
+  const cars = await db.all<CarRow & Omit<MaintenanceListItem, 'due' | 'lastServiceOn'>>(
     `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name, car.status,
        car.purpose, car.service_interval_km AS km, car.service_interval_months AS months,
        substr(car.created_at, 1, 10) AS createdOn,
@@ -218,24 +224,37 @@ export function dueSoonList(today: string, show: 'due' | 'all'): MaintenanceList
      LEFT JOIN rentals r ON r.car_id = car.id AND r.status = 'active'
      LEFT JOIN customers c ON c.id = r.customer_id
      WHERE car.purpose = 'rental'`,
-  ).all() as unknown as (CarRow & Omit<MaintenanceListItem, 'due' | 'lastServiceOn'>)[]
+  )
+
+  // Two queries for all cars rather than two per car: each one is a round trip to the database.
+  const [allReadings, allServices] = await Promise.all([
+    db.all<OdometerReading & { carId: number }>(
+      `SELECT car_id AS carId, id, read_on AS readOn, km, rental_id AS rentalId, service_id AS serviceId, note
+       FROM odometer_readings ORDER BY read_on DESC, id DESC`,
+    ),
+    db.all<Service & { carId: number }>(
+      `SELECT car_id AS carId, id, serviced_on AS servicedOn, km, description, cost_cents AS costCents, transaction_id AS transactionId
+       FROM services ORDER BY serviced_on DESC, id DESC`,
+    ),
+  ])
+  const byCar = <T extends { carId: number }>(rows: T[], carId: number) => rows.filter((r) => r.carId === carId)
 
   const items = cars.map(({ purpose, km, months, createdOn, ...car }): MaintenanceListItem => {
-    const services = servicesOf(car.id)
+    const services = byCar(allServices, car.id)
     return {
       ...car,
       lastServiceOn: services[0]?.servicedOn ?? null,
-      due: dueFor({ purpose, km, months, createdOn }, readingsOf(car.id), services, today),
+      due: dueFor({ purpose, km, months, createdOn }, byCar(allReadings, car.id), services, today),
     }
   })
   return items
-    .filter((i) => show === 'all' || i.due.state === 'overdue' || i.due.state === 'due_soon')
+    .filter((i) => show === 'all' || isDue(i))
     .sort((a, b) => urgency[a.due.state] - urgency[b.due.state] || closeness(a.due) - closeness(b.due) || a.plate.localeCompare(b.plate))
 }
 
-/** For the fleet overview: how many Rental cars need a service soon, and how many have no interval set. */
-export function maintenanceCounts(today: string) {
-  const all = dueSoonList(today, 'all')
+/** How many Rental cars need a service soon, and how many have no interval set. Pass the full list if you already have it. */
+export async function maintenanceCounts(today: string, all?: MaintenanceListItem[]) {
+  all ??= await dueSoonList(today, 'all')
   const count = (s: MaintenanceState) => all.filter((i) => i.due.state === s).length
   return { overdue: count('overdue'), dueSoon: count('due_soon'), noInterval: count('no_interval') }
 }

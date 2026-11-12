@@ -4,16 +4,18 @@
   "type": "module",
   "scripts": {
     "prepare": "panda codegen",
-    "dev": "vite dev --port 3000",
+    "dev": "DATABASE_PATH=${DATABASE_PATH:-data/garage.db} vite dev --port 3000",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-start": "^1.169.4",
+    "@vercel/blob": "^2.9.0",
     "react": "^19.3.1",
     "react-aria-components": "^1.22.1",
     "react-dom": "^19.3.1",
@@ -32,5 +34,10 @@
     "typescript": "5.9",
     "vite": "^8.3.6",
     "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "@vercel/cli-config": {
+      "zod": "$zod"
+    }
   }
 }

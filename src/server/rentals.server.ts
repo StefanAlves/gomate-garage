@@ -101,31 +101,31 @@ interface Money {
 const noMoney: Money = { rentPaidCents: 0, bondReceivedCents: 0, bondReturnedCents: 0, bondAppliedCents: 0, otherDeductionsCents: 0 }
 
 /** Rates and money for a set of rentals, keyed by rental id. */
-function loadFacts(ids: number[]) {
+async function loadFacts(ids: number[]) {
   const rates = new Map<number, RentRate[]>()
   const money = new Map<number, Money>()
   if (ids.length === 0) return { rates, money }
   const list = ids.join(',') // integers from our own rows
-  for (const r of db
-    .prepare(`SELECT rental_id AS rentalId, effective_from AS effectiveFrom, weekly_cents AS weeklyCents
-              FROM rental_rent_rates WHERE rental_id IN (${list}) ORDER BY effective_from`)
-    .all() as unknown as (RentRate & { rentalId: number })[]) {
+  for (const r of await db.all<RentRate & { rentalId: number }>(
+    `SELECT rental_id AS rentalId, effective_from AS effectiveFrom, weekly_cents AS weeklyCents
+     FROM rental_rent_rates WHERE rental_id IN (${list}) ORDER BY effective_from`,
+  )) {
     rates.set(r.rentalId, [...(rates.get(r.rentalId) ?? []), { effectiveFrom: r.effectiveFrom, weeklyCents: r.weeklyCents }])
   }
-  for (const m of db
-    .prepare(`SELECT rental_id AS rentalId,
+  for (const m of await db.all<Omit<Money, 'otherDeductionsCents'> & { rentalId: number }>(
+    `SELECT rental_id AS rentalId,
                 coalesce(SUM(CASE WHEN category = 'rental_income' THEN amount_cents END), 0) AS rentPaidCents,
                 coalesce(SUM(CASE WHEN category = 'bond_received' THEN amount_cents END), 0) AS bondReceivedCents,
                 coalesce(SUM(CASE WHEN category = 'bond_returned' THEN amount_cents END), 0) AS bondReturnedCents,
                 coalesce(SUM(CASE WHEN category = 'bond_applied' THEN amount_cents END), 0) AS bondAppliedCents
-              FROM transactions WHERE rental_id IN (${list}) GROUP BY rental_id`)
-    .all() as unknown as (Omit<Money, 'otherDeductionsCents'> & { rentalId: number })[]) {
+              FROM transactions WHERE rental_id IN (${list}) GROUP BY rental_id`,
+  )) {
     money.set(m.rentalId, { ...m, otherDeductionsCents: 0 })
   }
-  for (const d of db
-    .prepare(`SELECT rental_id AS rentalId, SUM(amount_cents) AS cents FROM rental_deductions
-              WHERE rental_id IN (${list}) AND kind != 'rent_arrears' GROUP BY rental_id`)
-    .all() as unknown as { rentalId: number; cents: number }[]) {
+  for (const d of await db.all<{ rentalId: number; cents: number }>(
+    `SELECT rental_id AS rentalId, SUM(amount_cents) AS cents FROM rental_deductions
+     WHERE rental_id IN (${list}) AND kind != 'rent_arrears' GROUP BY rental_id`,
+  )) {
     money.set(d.rentalId, { ...(money.get(d.rentalId) ?? noMoney), otherDeductionsCents: d.cents })
   }
   return { rates, money }
@@ -154,29 +154,29 @@ function summarise(r: Rental, rates: RentRate[], m: Money, today: string): Renta
   }
 }
 
-function withSummaries(rentals: Rental[], today: string): RentalWithSummary[] {
-  const { rates, money } = loadFacts(rentals.map((r) => r.id))
+async function withSummaries(rentals: Rental[], today: string): Promise<RentalWithSummary[]> {
+  const { rates, money } = await loadFacts(rentals.map((r) => r.id))
   return rentals.map((r) => ({ ...r, ...summarise(r, rates.get(r.id) ?? [], money.get(r.id) ?? noMoney, today) }))
 }
 
 // ---- Reads -------------------------------------------------------------------
 
-export function getRental(id: number, today: string) {
-  const row = db.prepare(`SELECT ${columns} ${from} WHERE r.id = ?`).get(id) as Rental | undefined
+export async function getRental(id: number, today: string) {
+  const row = await db.get<Rental>(`SELECT ${columns} ${from} WHERE r.id = ?`, [id])
   if (!row) return null
-  const [rental] = withSummaries([row], today)
-  const rates = db
-    .prepare(`SELECT effective_from AS effectiveFrom, weekly_cents AS weeklyCents FROM rental_rent_rates
-              WHERE rental_id = ? ORDER BY effective_from`)
-    .all(id) as unknown as RentRate[]
-  const payments = db
-    .prepare(`SELECT id, occurred_on AS occurredOn, category, amount_cents AS amountCents, method, notes
-              FROM transactions WHERE rental_id = ? ORDER BY occurred_on DESC, id DESC`)
-    .all(id) as unknown as RentalPayment[]
-  const deductions = db
-    .prepare(`SELECT id, kind, amount_cents AS amountCents, description, charge_id AS chargeId
-              FROM rental_deductions WHERE rental_id = ? ORDER BY id`)
-    .all(id) as unknown as RentalDeduction[]
+  const [rental] = await withSummaries([row], today)
+  const rates = await db.all<RentRate>(
+    `SELECT effective_from AS effectiveFrom, weekly_cents AS weeklyCents FROM rental_rent_rates
+     WHERE rental_id = ? ORDER BY effective_from`, [id],
+  )
+  const payments = await db.all<RentalPayment>(
+    `SELECT id, occurred_on AS occurredOn, category, amount_cents AS amountCents, method, notes
+     FROM transactions WHERE rental_id = ? ORDER BY occurred_on DESC, id DESC`, [id],
+  )
+  const deductions = await db.all<RentalDeduction>(
+    `SELECT id, kind, amount_cents AS amountCents, description, charge_id AS chargeId
+     FROM rental_deductions WHERE rental_id = ? ORDER BY id`, [id],
+  )
   return { rental: rental!, rates, payments, deductions }
 }
 
@@ -184,7 +184,7 @@ export function getRental(id: number, today: string) {
  * Rentals for the list page. Arrears depend on the Rent schedule, so filtering
  * on "behind" and sorting by Arrears happen after the summaries are worked out.
  */
-export function listRentals({ q, status, show, sort }: z.output<typeof rentalListSearchSchema>, today: string) {
+export async function listRentals({ q, status, show, sort }: z.output<typeof rentalListSearchSchema>, today: string) {
   const conditions: string[] = []
   const params: Record<string, string> = {}
   if (status !== 'all') {
@@ -198,8 +198,8 @@ export function listRentals({ q, status, show, sort }: z.output<typeof rentalLis
     params.like = like
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  const rows = db.prepare(`SELECT ${columns} ${from} ${where}`).all(params) as unknown as Rental[]
-  let items = withSummaries(rows, today)
+  const rows = await db.all<Rental>(`SELECT ${columns} ${from} ${where}`, params)
+  let items = await withSummaries(rows, today)
   if (show === 'behind') items = items.filter((r) => r.owedCents > 0)
   const byStart = (a: Rental, b: Rental) => b.startDate.localeCompare(a.startDate) || b.id - a.id
   items.sort(
@@ -213,33 +213,33 @@ export function listRentals({ q, status, show, sort }: z.output<typeof rentalLis
 const activeFirst = (rows: RentalWithSummary[]) =>
   rows.sort((a, b) => (a.status === b.status ? 0 : a.status === 'active' ? -1 : 1) || b.startDate.localeCompare(a.startDate) || b.id - a.id)
 
-export function rentalsForCustomer(customerId: number, today: string) {
-  const rows = db.prepare(`SELECT ${columns} ${from} WHERE r.customer_id = ?`).all(customerId) as unknown as Rental[]
-  return activeFirst(withSummaries(rows, today))
+export async function rentalsForCustomer(customerId: number, today: string) {
+  const rows = await db.all<Rental>(`SELECT ${columns} ${from} WHERE r.customer_id = ?`, [customerId])
+  return activeFirst(await withSummaries(rows, today))
 }
 
-export function rentalsForCar(carId: number, today: string) {
-  const rows = db.prepare(`SELECT ${columns} ${from} WHERE r.car_id = ?`).all(carId) as unknown as Rental[]
-  return activeFirst(withSummaries(rows, today))
+export async function rentalsForCar(carId: number, today: string) {
+  const rows = await db.all<Rental>(`SELECT ${columns} ${from} WHERE r.car_id = ?`, [carId])
+  return activeFirst(await withSummaries(rows, today))
 }
 
 /** Ready Rental cars, for the "Start rental" picker. */
 export function availableRentalCars() {
-  return db
-    .prepare(`SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
-                car.weekly_rate_cents AS weeklyRateCents
-              FROM cars car WHERE car.purpose = 'rental' AND car.status = 'ready' ORDER BY car.plate`)
-    .all() as unknown as { id: number; plate: string; name: string; weeklyRateCents: number | null }[]
+  return db.all<{ id: number; plate: string; name: string; weeklyRateCents: number | null }>(
+    `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
+       car.weekly_rate_cents AS weeklyRateCents
+     FROM cars car WHERE car.purpose = 'rental' AND car.status = 'ready' ORDER BY car.plate`,
+  )
 }
 
 /** Customers for the "Start rental" picker, with whether a licence photo is on file. */
-export function rentalCustomerOptions() {
-  return db
-    .prepare(`SELECT c.id, (c.first_name || coalesce(' ' || c.last_name, '')) AS name, c.phone,
-                EXISTS (SELECT 1 FROM customer_documents d WHERE d.customer_id = c.id AND d.kind = 'licence_front') AS hasLicence
-              FROM customers c ORDER BY c.first_name COLLATE NOCASE, c.last_name COLLATE NOCASE`)
-    .all()
-    .map((r) => ({ ...(r as { id: number; name: string; phone: string }), hasLicence: !!(r as { hasLicence: number }).hasLicence }))
+export async function rentalCustomerOptions() {
+  const rows = await db.all<{ id: number; name: string; phone: string; hasLicence: number }>(
+    `SELECT c.id, (c.first_name || coalesce(' ' || c.last_name, '')) AS name, c.phone,
+       EXISTS (SELECT 1 FROM customer_documents d WHERE d.customer_id = c.id AND d.kind = 'licence_front') AS hasLicence
+     FROM customers c ORDER BY c.first_name COLLATE NOCASE, c.last_name COLLATE NOCASE`,
+  )
+  return rows.map((r) => ({ ...r, hasLicence: !!r.hasLicence }))
 }
 
 // ---- Writes ------------------------------------------------------------------
@@ -251,59 +251,60 @@ export type StartOutcome = { ok: true; id: number } | { ok: false; reason: 'car_
  * first Rent rate and the Bond received, and moves the Car to Rented, all or
  * nothing. Only a Ready Rental car can be rented.
  */
-export function startRental(v: StartRentalValues): StartOutcome {
-  return inTransaction((): StartOutcome => {
-    const car = db.prepare(`SELECT purpose, status FROM cars WHERE id = ?`).get(v.carId) as
-      | { purpose: string; status: string } | undefined
+export function startRental(v: StartRentalValues): Promise<StartOutcome> {
+  return inTransaction(async (): Promise<StartOutcome> => {
+    const car = await db.get<{ purpose: string; status: string }>(`SELECT purpose, status FROM cars WHERE id = ?`, [v.carId])
     if (!car || car.purpose !== 'rental' || car.status !== 'ready') return { ok: false, reason: 'car_not_available' }
 
-    const customerId = resolveInlineCustomer(v)
+    const customerId = await resolveInlineCustomer(v)
     if (customerId == null) return { ok: false, reason: 'customer_not_found' }
 
     const bondCents = toCents(v.bond) ?? 0
-    const id = Number(
-      db.prepare(`INSERT INTO rentals (customer_id, car_id, start_date, bond_cents, notes) VALUES (?, ?, ?, ?, ?)`)
-        .run(customerId, v.carId, v.startDate, bondCents, v.notes).lastInsertRowid,
+    const { lastInsertRowid: id } = await db.run(
+      `INSERT INTO rentals (customer_id, car_id, start_date, bond_cents, notes) VALUES (?, ?, ?, ?, ?)`,
+      [customerId, v.carId, v.startDate, bondCents, v.notes],
     )
-    db.prepare(`INSERT INTO rental_rent_rates (rental_id, effective_from, weekly_cents) VALUES (?, ?, ?)`)
-      .run(id, v.startDate, toCents(v.weeklyRent))
+    await db.run(`INSERT INTO rental_rent_rates (rental_id, effective_from, weekly_cents) VALUES (?, ?, ?)`,
+      [id, v.startDate, toCents(v.weeklyRent)])
     if (bondCents > 0) {
-      db.prepare(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
-                  VALUES (?, ?, ?, ?, 'bond_received', ?, ?, 'Bond at rental start')`)
-        .run(v.carId, customerId, id, v.startDate, bondCents, v.bondMethod)
+      await db.run(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
+                    VALUES (?, ?, ?, ?, 'bond_received', ?, ?, 'Bond at rental start')`,
+        [v.carId, customerId, id, v.startDate, bondCents, v.bondMethod])
     }
-    db.prepare(`UPDATE cars SET status = 'rented', updated_at = ${sqlNow} WHERE id = ?`).run(v.carId)
+    await db.run(`UPDATE cars SET status = 'rented', updated_at = ${sqlNow} WHERE id = ?`, [v.carId])
     return { ok: true, id }
   })
 }
 
 function rentalRow(id: number) {
-  return db.prepare(`SELECT id, customer_id AS customerId, car_id AS carId, start_date AS startDate, status
-                     FROM rentals WHERE id = ?`).get(id) as
-    | { id: number; customerId: number; carId: number; startDate: string; status: RentalStatus } | undefined
+  return db.get<{ id: number; customerId: number; carId: number; startDate: string; status: RentalStatus }>(
+    `SELECT id, customer_id AS customerId, car_id AS carId, start_date AS startDate, status FROM rentals WHERE id = ?`, [id],
+  )
 }
 
 /** A Rent payment of any amount (also used to pay off a shortfall after Return). */
-export function recordRentPayment(id: number, v: RentPaymentValues): 'ok' | 'not_found' {
-  const r = rentalRow(id)
+export async function recordRentPayment(id: number, v: RentPaymentValues): Promise<'ok' | 'not_found'> {
+  const r = await rentalRow(id)
   if (!r) return 'not_found'
-  db.prepare(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
-              VALUES (?, ?, ?, ?, 'rental_income', ?, ?, ?)`)
-    .run(r.carId, r.customerId, id, v.paidOn, toCents(v.amount), v.method, v.notes)
+  await db.run(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
+                VALUES (?, ?, ?, ?, 'rental_income', ?, ?, ?)`,
+    [r.carId, r.customerId, id, v.paidOn, toCents(v.amount), v.method, v.notes])
   return 'ok'
 }
 
 /** Changes the weekly Rent from a date. Earlier weeks keep their rate; the same date again replaces it. */
-export function adjustRent(id: number, v: RentChangeValues): 'ok' | 'not_found' | 'not_active' | 'before_start' {
-  const r = rentalRow(id)
-  if (!r) return 'not_found'
-  if (r.status !== 'active') return 'not_active'
-  if (v.effectiveFrom < r.startDate) return 'before_start'
-  db.prepare(`INSERT INTO rental_rent_rates (rental_id, effective_from, weekly_cents) VALUES (?, ?, ?)
-              ON CONFLICT (rental_id, effective_from) DO UPDATE SET weekly_cents = excluded.weekly_cents`)
-    .run(id, v.effectiveFrom, toCents(v.weeklyRent))
-  db.prepare(`UPDATE rentals SET updated_at = ${sqlNow} WHERE id = ?`).run(id)
-  return 'ok'
+export function adjustRent(id: number, v: RentChangeValues): Promise<'ok' | 'not_found' | 'not_active' | 'before_start'> {
+  return inTransaction(async () => {
+    const r = await rentalRow(id)
+    if (!r) return 'not_found'
+    if (r.status !== 'active') return 'not_active'
+    if (v.effectiveFrom < r.startDate) return 'before_start'
+    await db.run(`INSERT INTO rental_rent_rates (rental_id, effective_from, weekly_cents) VALUES (?, ?, ?)
+                  ON CONFLICT (rental_id, effective_from) DO UPDATE SET weekly_cents = excluded.weekly_cents`,
+      [id, v.effectiveFrom, toCents(v.weeklyRent)])
+    await db.run(`UPDATE rentals SET updated_at = ${sqlNow} WHERE id = ?`, [id])
+    return 'ok'
+  })
 }
 
 /**
@@ -311,43 +312,44 @@ export function adjustRent(id: number, v: RentChangeValues): 'ok' | 'not_found' 
  * dated within the Rental, and either this Customer's or not yet assigned.
  */
 function suggestedCharges(r: { carId: number; customerId: number; startDate: string }, returnedOn: string) {
-  return db
-    .prepare(`SELECT id, kind, incurred_on AS incurredOn, amount_cents AS amountCents,
+  return db.all<SuggestedCharge>(
+    `SELECT id, kind, incurred_on AS incurredOn, amount_cents AS amountCents,
                 trim(coalesce(offence_type, '') || coalesce(' · #' || notice_number, '')) AS description
               FROM charges
               WHERE car_id = :car AND (customer_id = :customer OR customer_id IS NULL)
                 AND incurred_on BETWEEN :start AND :end AND status IN ('not_paid', 'business_paid')
                 AND amount_cents > 0
-              ORDER BY incurred_on, id`)
-    .all({ car: r.carId, customer: r.customerId, start: r.startDate, end: returnedOn }) as unknown as SuggestedCharge[]
+              ORDER BY incurred_on, id`,
+    { car: r.carId, customer: r.customerId, start: r.startDate, end: returnedOn },
+  )
 }
 
-function arrearsAt(id: number, startDate: string, returnedOn: string) {
-  const rates = loadFacts([id]).rates.get(id) ?? []
-  const { rentPaidCents } = db
-    .prepare(`SELECT coalesce(SUM(amount_cents), 0) AS rentPaidCents FROM transactions
-              WHERE rental_id = ? AND category = 'rental_income'`)
-    .get(id) as { rentPaidCents: number }
+async function arrearsAt(id: number, startDate: string, returnedOn: string) {
+  const rates = (await loadFacts([id])).rates.get(id) ?? []
+  const { rentPaidCents } = (await db.get<{ rentPaidCents: number }>(
+    `SELECT coalesce(SUM(amount_cents), 0) AS rentPaidCents FROM transactions
+     WHERE rental_id = ? AND category = 'rental_income'`, [id],
+  ))!
   return Math.max(0, rentDue(rates, startDate, returnedOn, returnedOn) - rentPaidCents)
 }
 
-function bondHeld(id: number) {
-  return (db
-    .prepare(`SELECT coalesce(SUM(CASE WHEN category = 'bond_received' THEN amount_cents ELSE -amount_cents END), 0) AS held
-              FROM transactions WHERE rental_id = ? AND category IN ('bond_received', 'bond_returned', 'bond_applied')`)
-    .get(id) as { held: number }).held
+async function bondHeld(id: number) {
+  return (await db.get<{ held: number }>(
+    `SELECT coalesce(SUM(CASE WHEN category = 'bond_received' THEN amount_cents ELSE -amount_cents END), 0) AS held
+     FROM transactions WHERE rental_id = ? AND category IN ('bond_received', 'bond_returned', 'bond_applied')`, [id],
+  ))!.held
 }
 
-export function settlementPreview(id: number, returnedOn: string): SettlementPreview | 'not_found' | 'not_active' {
-  const r = rentalRow(id)
+export async function settlementPreview(id: number, returnedOn: string): Promise<SettlementPreview | 'not_found' | 'not_active'> {
+  const r = await rentalRow(id)
   if (!r) return 'not_found'
   if (r.status !== 'active') return 'not_active'
   const end = returnedOn < r.startDate ? r.startDate : returnedOn
   return {
     returnedOn: end,
-    bondHeldCents: bondHeld(id),
-    rentArrearsCents: arrearsAt(id, r.startDate, end),
-    charges: suggestedCharges(r, end),
+    bondHeldCents: await bondHeld(id),
+    rentArrearsCents: await arrearsAt(id, r.startDate, end),
+    charges: await suggestedCharges(r, end),
   }
 }
 
@@ -362,18 +364,18 @@ export type ReturnOutcome =
  * charges paid by the Customer, closes the Rental and puts the Car back in
  * Preparation. Whatever the Bond doesn't cover stays owed on the Rental.
  */
-export function returnRental(id: number, v: ReturnRentalValues): ReturnOutcome {
-  return inTransaction((): ReturnOutcome => {
-    const r = rentalRow(id)
+export function returnRental(id: number, v: ReturnRentalValues): Promise<ReturnOutcome> {
+  return inTransaction(async (): Promise<ReturnOutcome> => {
+    const r = await rentalRow(id)
     if (!r) return { ok: false, reason: 'not_found' }
     if (r.status !== 'active') return { ok: false, reason: 'not_active' }
     if (v.returnedOn < r.startDate) return { ok: false, reason: 'before_start' }
 
     const deductions: { kind: DeductionKind; amountCents: number; description: string; chargeId: number | null }[] = []
-    const arrears = arrearsAt(id, r.startDate, v.returnedOn)
+    const arrears = await arrearsAt(id, r.startDate, v.returnedOn)
     if (arrears > 0) deductions.push({ kind: 'rent_arrears', amountCents: arrears, description: 'Rent arrears at return', chargeId: null })
     const wanted = new Set(v.chargeIds)
-    const charges = suggestedCharges(r, v.returnedOn).filter((c) => wanted.has(c.id))
+    const charges = (await suggestedCharges(r, v.returnedOn)).filter((c) => wanted.has(c.id))
     for (const c of charges) {
       deductions.push({
         kind: c.kind,
@@ -384,22 +386,25 @@ export function returnRental(id: number, v: ReturnRentalValues): ReturnOutcome {
     }
     for (const e of v.extras) deductions.push({ kind: e.kind, amountCents: toCents(e.amount)!, description: e.description, chargeId: null })
 
-    const insert = db.prepare(`INSERT INTO rental_deductions (rental_id, kind, amount_cents, description, charge_id) VALUES (?, ?, ?, ?, ?)`)
-    for (const d of deductions) insert.run(id, d.kind, d.amountCents, d.description, d.chargeId)
+    for (const d of deductions)
+      await db.run(`INSERT INTO rental_deductions (rental_id, kind, amount_cents, description, charge_id) VALUES (?, ?, ?, ?, ?)`,
+        [id, d.kind, d.amountCents, d.description, d.chargeId])
 
     const total = deductions.reduce((s, d) => s + d.amountCents, 0)
-    const { appliedCents, refundCents, shortfallCents } = settle(bondHeld(id), total)
-    const ledger = db.prepare(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    if (appliedCents > 0) ledger.run(r.carId, r.customerId, id, v.returnedOn, 'bond_applied', appliedCents, null, 'Bond kept at return')
-    if (refundCents > 0) ledger.run(r.carId, r.customerId, id, v.returnedOn, 'bond_returned', refundCents, v.refundMethod, 'Bond refund at return')
+    const { appliedCents, refundCents, shortfallCents } = settle(await bondHeld(id), total)
+    const ledger = (category: string, cents: number, method: PaymentMethod | null, notes: string) =>
+      db.run(`INSERT INTO transactions (car_id, customer_id, rental_id, occurred_on, category, amount_cents, method, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [r.carId, r.customerId, id, v.returnedOn, category, cents, method, notes])
+    if (appliedCents > 0) await ledger('bond_applied', appliedCents, null, 'Bond kept at return')
+    if (refundCents > 0) await ledger('bond_returned', refundCents, v.refundMethod, 'Bond refund at return')
 
-    const markPaid = db.prepare(`UPDATE charges SET status = 'paid_by_customer', customer_id = ?, updated_at = ${sqlNow} WHERE id = ?`)
-    for (const c of charges) markPaid.run(r.customerId, c.id)
+    for (const c of charges)
+      await db.run(`UPDATE charges SET status = 'paid_by_customer', customer_id = ?, updated_at = ${sqlNow} WHERE id = ?`,
+        [r.customerId, c.id])
 
-    db.prepare(`UPDATE rentals SET status = 'returned', returned_on = ?, return_reason = ?, updated_at = ${sqlNow} WHERE id = ?`)
-      .run(v.returnedOn, v.reason, id)
-    db.prepare(`UPDATE cars SET status = 'preparation', updated_at = ${sqlNow} WHERE id = ?`).run(r.carId)
+    await db.run(`UPDATE rentals SET status = 'returned', returned_on = ?, return_reason = ?, updated_at = ${sqlNow} WHERE id = ?`,
+      [v.returnedOn, v.reason, id])
+    await db.run(`UPDATE cars SET status = 'preparation', updated_at = ${sqlNow} WHERE id = ?`, [r.carId])
     return { ok: true, appliedCents, refundCents, shortfallCents }
   })
 }

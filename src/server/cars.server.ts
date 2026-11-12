@@ -1,8 +1,7 @@
 import '@tanstack/react-start/server-only'
-import { db, inTransaction, likePattern, sqlNow, toCents } from './db.server'
+import { db, inTransaction, likePattern, sqlNow, toCents, type Args } from './db.server'
 import { garageToday } from '~/lib/period'
 import { totalsColumns, withPnl, type Totals } from './transactions.server'
-import type { SQLInputValue } from 'node:sqlite'
 import { MANUAL_CAR_STATUSES } from '~/lib/schemas'
 import type {
   CarFeature, CarPurpose, CarStatus, CarStockValues, CarValues, FuelType, NewCarValues, carListSearchSchema, stockSearchSchema,
@@ -67,7 +66,7 @@ const fromRow = (r: Row): Car => ({
   writtenOff: !!r.writtenOff,
   features: (r.features ? r.features.split(',') : []) as CarFeature[],
 })
-const toParams = (v: CarValues | NewCarValues): Record<string, SQLInputValue> =>
+const toParams = (v: CarValues | NewCarValues): Args =>
   ({ ...v, ppsrChecked: v.ppsrChecked ? 1 : 0, writtenOff: v.writtenOff ? 1 : 0 })
 
 const from = `FROM cars car`
@@ -94,7 +93,7 @@ const orderBy = {
   make_desc: 'car.make COLLATE NOCASE DESC, car.model COLLATE NOCASE DESC, car.year DESC',
 } as const
 
-export function listCars({ q, page, size, sort, purpose, status }: z.output<typeof carListSearchSchema>) {
+export async function listCars({ q, page, size, sort, purpose, status }: z.output<typeof carListSearchSchema>) {
   const conditions: string[] = []
   const params: Record<string, string | number> = {}
   const like = likePattern(q)
@@ -112,17 +111,18 @@ export function listCars({ q, page, size, sort, purpose, status }: z.output<type
     params.status = status
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  const { total } = db.prepare(`SELECT COUNT(*) AS total ${from} ${where}`).get(params) as { total: number }
+  const { total } = (await db.get<{ total: number }>(`SELECT COUNT(*) AS total ${from} ${where}`, params))!
   const pageCount = Math.max(1, Math.ceil(total / size))
   const current = Math.min(page, pageCount)
-  const items = db
-    .prepare(`SELECT ${listColumns} ${from} ${where} ORDER BY ${orderBy[sort]} LIMIT :limit OFFSET :offset`)
-    .all({ ...params, limit: size, offset: (current - 1) * size }) as unknown as CarListItem[]
+  const items = await db.all<CarListItem>(
+    `SELECT ${listColumns} ${from} ${where} ORDER BY ${orderBy[sort]} LIMIT :limit OFFSET :offset`,
+    { ...params, limit: size, offset: (current - 1) * size },
+  )
   return { items, total, page: current, pageCount }
 }
 
-export function getCar(id: number) {
-  const row = db.prepare(`SELECT ${allColumns} ${from} WHERE car.id = ?`).get(id) as Row | undefined
+export async function getCar(id: number) {
+  const row = await db.get<Row>(`SELECT ${allColumns} ${from} WHERE car.id = ?`, [id])
   return row ? fromRow(row) : null
 }
 
@@ -141,14 +141,13 @@ const values = `:plate, :make, :model, :variant, :year, :color, :vin, :engineNum
  */
 export function insertCar(v: NewCarValues) {
   const params = v.purpose === 'rental' ? { ...v, nextServiceDate: null, nextServiceKm: null } : v
-  return inTransaction(() => {
-    const id = Number(
-      db.prepare(`INSERT INTO cars (purpose, status, ${fields}) VALUES (:purpose, :status, ${values})`).run(toParams(params))
-        .lastInsertRowid,
+  return inTransaction(async () => {
+    const { lastInsertRowid: id } = await db.run(
+      `INSERT INTO cars (purpose, status, ${fields}) VALUES (:purpose, :status, ${values})`, toParams(params),
     )
     if (v.purpose === 'rental' && v.mileageKm != null)
-      db.prepare(`INSERT INTO odometer_readings (car_id, read_on, km, note) VALUES (?, ?, ?, 'When the car was added')`)
-        .run(id, garageToday(), v.mileageKm)
+      await db.run(`INSERT INTO odometer_readings (car_id, read_on, km, note) VALUES (?, ?, ?, 'When the car was added')`,
+        [id, garageToday(), v.mileageKm])
     return id
   })
 }
@@ -162,15 +161,15 @@ const updateValues = `:plate, :make, :model, :variant, :year, :color, :vin, :eng
   :nextTransmissionDate, :nextTransmissionKm, :regoExpiry,
   :insuranceProvider, :insurancePolicy, :insuranceExpiry, :ppsrChecked, :writtenOff, :notes`
 
-export function updateCar(id: number, v: CarValues) {
-  const { changes } = db
-    .prepare(`UPDATE cars SET (${fields}, updated_at) = (${updateValues}, ${sqlNow}) WHERE id = :id`)
-    .run({ ...toParams(v), id })
+export async function updateCar(id: number, v: CarValues) {
+  const { changes } = await db.run(
+    `UPDATE cars SET (${fields}, updated_at) = (${updateValues}, ${sqlNow}) WHERE id = :id`, { ...toParams(v), id },
+  )
   return changes > 0
 }
 
-export function deleteCar(id: number) {
-  return db.prepare(`DELETE FROM cars WHERE id = ?`).run(id).changes > 0
+export async function deleteCar(id: number) {
+  return (await db.run(`DELETE FROM cars WHERE id = ?`, [id])).changes > 0
 }
 
 /**
@@ -179,16 +178,14 @@ export function deleteCar(id: number) {
  * fine can be passed on to them.
  */
 export function carOptions() {
-  return db
-    .prepare(
-      `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
-         coalesce(
-           (SELECT r.customer_id FROM rentals r WHERE r.car_id = car.id AND r.status = 'active'),
-           (SELECT f.customer_id FROM finance_sales f WHERE f.car_id = car.id AND f.status = 'active')
-         ) AS holderId
-       FROM cars car ORDER BY car.plate`,
-    )
-    .all() as unknown as { id: number; plate: string; name: string; holderId: number | null }[]
+  return db.all<{ id: number; plate: string; name: string; holderId: number | null }>(
+    `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
+       coalesce(
+         (SELECT r.customer_id FROM rentals r WHERE r.car_id = car.id AND r.status = 'active'),
+         (SELECT f.customer_id FROM finance_sales f WHERE f.car_id = car.id AND f.status = 'active')
+       ) AS holderId
+     FROM cars car ORDER BY car.plate`,
+  )
 }
 
 // ---- Stock -------------------------------------------------------------------
@@ -200,19 +197,18 @@ const isManual = (status: CarStatus) => (MANUAL_CAR_STATUSES as readonly string[
  * Rented, Under finance and Sold belong to Rentals and Finance Sales. Only the
  * prices that apply to the car's purpose are written.
  */
-export function updateCarStock(id: number, v: CarStockValues): 'ok' | 'not_found' | 'status_locked' {
-  const current = db.prepare('SELECT status FROM cars WHERE id = ?').get(id) as { status: CarStatus } | undefined
+export async function updateCarStock(id: number, v: CarStockValues): Promise<'ok' | 'not_found' | 'status_locked'> {
+  const current = await db.get<{ status: CarStatus }>('SELECT status FROM cars WHERE id = ?', [id])
   if (!current) return 'not_found'
   if (v.status !== undefined && v.status !== current.status && !isManual(current.status)) return 'status_locked'
-  db.prepare(
+  await db.run(
     `UPDATE cars SET status = coalesce(:status, status),
        weekly_rate_cents  = CASE purpose WHEN 'rental' THEN :weeklyRate  ELSE weekly_rate_cents  END,
        asking_price_cents = CASE purpose WHEN 'sale'   THEN :askingPrice ELSE asking_price_cents END,
        min_price_cents    = CASE purpose WHEN 'sale'   THEN :minPrice    ELSE min_price_cents    END,
        mileage_km = CASE purpose WHEN 'rental' THEN mileage_km ELSE :mileageKm END, listing_description = :listingDescription, features = :features,
        updated_at = ${sqlNow}
-     WHERE id = :id`,
-  ).run({
+     WHERE id = :id`, {
     id,
     status: v.status ?? null,
     weeklyRate: toCents(v.weeklyRate),
@@ -243,7 +239,7 @@ const stockOrder = {
 } as const
 
 /** Cars with their ledger totals, for the Stock board and table. */
-export function listStock({ purpose, sort, q }: z.output<typeof stockSearchSchema>) {
+export async function listStock({ purpose, sort, q }: z.output<typeof stockSearchSchema>) {
   const conditions = ['1 = 1']
   const params: Record<string, string> = {}
   if (purpose !== 'all') {
@@ -255,8 +251,7 @@ export function listStock({ purpose, sort, q }: z.output<typeof stockSearchSchem
     conditions.push(`(car.plate LIKE :like ESCAPE '\\' OR car.make LIKE :like ESCAPE '\\' OR car.model LIKE :like ESCAPE '\\')`)
     params.like = like
   }
-  const rows = db
-    .prepare(
+  const rows = await db.all<StockRow>(
       `SELECT car.id, car.purpose, car.status, car.plate, car.make, car.model, car.variant, car.year, car.color,
               car.body_style AS bodyStyle, car.transmission, car.fuel_type AS fuelType, car.mileage_km AS mileageKm,
               car.weekly_rate_cents AS weeklyRateCents, car.asking_price_cents AS askingPriceCents, car.min_price_cents AS minPriceCents,
@@ -266,8 +261,8 @@ export function listStock({ purpose, sort, q }: z.output<typeof stockSearchSchem
        FROM cars car LEFT JOIN transactions t ON t.car_id = car.id
        WHERE ${conditions.join(' AND ')}
        GROUP BY car.id ORDER BY ${stockOrder[sort]}`,
-    )
-    .all(params) as unknown as StockRow[]
+      params,
+  )
   return rows.map(
     (r): StockItem => ({
       ...r,
@@ -279,23 +274,20 @@ export function listStock({ purpose, sort, q }: z.output<typeof stockSearchSchem
 }
 
 /** How many cars sit in each status. */
-export function stockStatusCounts() {
-  const rows = db
-    .prepare(`SELECT status, COUNT(*) AS count FROM cars GROUP BY status`)
-    .all() as unknown as { status: CarStatus; count: number }[]
+export async function stockStatusCounts() {
+  const rows = await db.all<{ status: CarStatus; count: number }>(`SELECT status, COUNT(*) AS count FROM cars GROUP BY status`)
   return Object.fromEntries(rows.map((r) => [r.status, r.count])) as Partial<Record<CarStatus, number>>
 }
 
 /** Cars not yet Sold whose rego or insurance expires on or before `until` (YYYY-MM-DD), soonest first. */
 export function expiringCompliance(until: string) {
-  return db
-    .prepare(
-      `SELECT id, plate, (coalesce(year || ' ', '') || make || ' ' || model) AS name, 'rego' AS what, rego_expiry AS expiresOn
-       FROM cars WHERE status != 'sold' AND rego_expiry IS NOT NULL AND rego_expiry <= :until
-       UNION ALL
-       SELECT id, plate, (coalesce(year || ' ', '') || make || ' ' || model), 'insurance', insurance_expiry
-       FROM cars WHERE status != 'sold' AND insurance_expiry IS NOT NULL AND insurance_expiry <= :until
-       ORDER BY expiresOn`,
-    )
-    .all({ until }) as unknown as { id: number; plate: string; name: string; what: 'rego' | 'insurance'; expiresOn: string }[]
+  return db.all<{ id: number; plate: string; name: string; what: 'rego' | 'insurance'; expiresOn: string }>(
+    `SELECT id, plate, (coalesce(year || ' ', '') || make || ' ' || model) AS name, 'rego' AS what, rego_expiry AS expiresOn
+     FROM cars WHERE status != 'sold' AND rego_expiry IS NOT NULL AND rego_expiry <= :until
+     UNION ALL
+     SELECT id, plate, (coalesce(year || ' ', '') || make || ' ' || model), 'insurance', insurance_expiry
+     FROM cars WHERE status != 'sold' AND insurance_expiry IS NOT NULL AND insurance_expiry <= :until
+     ORDER BY expiresOn`,
+    { until },
+  )
 }

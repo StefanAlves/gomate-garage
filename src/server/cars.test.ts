@@ -7,79 +7,79 @@ const newCar = (purpose: 'rental' | 'sale', plate: string, status = 'preparation
   insertCar(newCarInputSchema.parse({ purpose, status, plate, make: 'Toyota', model: 'Corolla' }))
 const stock = (values: Record<string, unknown>) => carStockInputSchema.parse(values)
 
-beforeEach(() => {
-  db.exec('DELETE FROM transactions; DELETE FROM charges; DELETE FROM cars')
+beforeEach(async () => {
+  await db.exec('DELETE FROM transactions; DELETE FROM charges; DELETE FROM cars')
 })
 
 describe('car purpose', () => {
-  it('requires a purpose when a car is added', () => {
+  it('requires a purpose when a car is added', async () => {
     const parsed = newCarInputSchema.safeParse({ plate: 'ABC1', make: 'Toyota', model: 'Corolla' })
     expect(parsed.success).toBe(false)
   })
 
-  it('only lets a new car start in Preparation or Ready', () => {
+  it('only lets a new car start in Preparation or Ready', async () => {
     expect(newCarInputSchema.safeParse({ purpose: 'rental', status: 'rented', plate: 'A1', make: 'a', model: 'b' }).success).toBe(false)
-    const id = newCar('rental', 'A1', 'ready')
-    expect(getCar(id)).toMatchObject({ purpose: 'rental', status: 'ready' })
+    const id = await newCar('rental', 'A1', 'ready')
+    expect(await getCar(id)).toMatchObject({ purpose: 'rental', status: 'ready' })
   })
 
-  it('rejects a status that does not belong to the purpose', () => {
-    const id = newCar('rental', 'R1')
-    expect(() => db.prepare(`UPDATE cars SET status = 'sold' WHERE id = ?`).run(id)).toThrow(/CHECK/)
+  it('rejects a status that does not belong to the purpose', async () => {
+    const id = await newCar('rental', 'R1')
+    await expect(db.run(`UPDATE cars SET status = 'sold' WHERE id = ?`, [id])).rejects.toThrow(/CHECK/)
   })
 
-  it('filters the cars list and the stock board by purpose', () => {
-    newCar('rental', 'R1')
-    newCar('sale', 'S1')
+  it('filters the cars list and the stock board by purpose', async () => {
+    await newCar('rental', 'R1')
+    await newCar('sale', 'S1')
     const base = { page: 1, size: 25 as const, sort: 'recent' as const }
-    expect(listCars({ ...base, purpose: 'rental' }).items.map((c) => c.plate)).toEqual(['R1'])
-    expect(listStock({ view: 'board', purpose: 'sale', sort: 'rego' }).map((c) => c.plate)).toEqual(['S1'])
+    expect((await listCars({ ...base, purpose: 'rental' })).items.map((c) => c.plate)).toEqual(['R1'])
+    expect((await listStock({ view: 'board', purpose: 'sale', sort: 'rego' })).map((c) => c.plate)).toEqual(['S1'])
   })
 })
 
 describe('stock tab', () => {
-  it('moves a car between Preparation and Ready', () => {
-    const id = newCar('sale', 'S1')
-    expect(updateCarStock(id, stock({ status: 'ready' }))).toBe('ok')
-    expect(getCar(id)?.status).toBe('ready')
-    expect(updateCarStock(id, stock({ status: 'preparation' }))).toBe('ok')
-    expect(getCar(id)?.status).toBe('preparation')
+  it('moves a car between Preparation and Ready', async () => {
+    const id = await newCar('sale', 'S1')
+    expect(await updateCarStock(id, stock({ status: 'ready' }))).toBe('ok')
+    expect((await getCar(id))?.status).toBe('ready')
+    expect(await updateCarStock(id, stock({ status: 'preparation' }))).toBe('ok')
+    expect((await getCar(id))?.status).toBe('preparation')
   })
 
-  it('never accepts Rented, Under finance or Sold from the form', () => {
+  it('never accepts Rented, Under finance or Sold from the form', async () => {
     for (const status of ['rented', 'under_finance', 'sold']) expect(carStockInputSchema.safeParse({ status }).success).toBe(false)
   })
 
-  it('locks the status of a car that is out with a customer', () => {
-    const id = newCar('rental', 'R1', 'ready')
-    db.prepare(`UPDATE cars SET status = 'rented' WHERE id = ?`).run(id)
-    expect(updateCarStock(id, stock({ status: 'ready' }))).toBe('status_locked')
-    expect(getCar(id)?.status).toBe('rented')
+  it('locks the status of a car that is out with a customer', async () => {
+    const id = await newCar('rental', 'R1', 'ready')
+    await db.run(`UPDATE cars SET status = 'rented' WHERE id = ?`, [id])
+    expect(await updateCarStock(id, stock({ status: 'ready' }))).toBe('status_locked')
+    expect((await getCar(id))?.status).toBe('rented')
     // The rest of the tab can still be saved.
-    expect(updateCarStock(id, stock({ weeklyRate: '250' }))).toBe('ok')
-    expect(getCar(id)).toMatchObject({ status: 'rented', weeklyRateCents: 25000 })
+    expect(await updateCarStock(id, stock({ weeklyRate: '250' }))).toBe('ok')
+    expect(await getCar(id)).toMatchObject({ status: 'rented', weeklyRateCents: 25000 })
   })
 
-  it("leaves a rental car's odometer to Maintenance readings, but saves a sale car's", () => {
-    const rental = newCar('rental', 'R2', 'ready')
-    const sale = newCar('sale', 'S2', 'ready')
-    updateCarStock(rental, stock({ mileageKm: '1200' }))
-    updateCarStock(sale, stock({ mileageKm: '1200' }))
-    expect(getCar(rental)?.mileageKm).toBeNull()
-    expect(getCar(sale)?.mileageKm).toBe(1200)
+  it("leaves a rental car's odometer to Maintenance readings, but saves a sale car's", async () => {
+    const rental = await newCar('rental', 'R2', 'ready')
+    const sale = await newCar('sale', 'S2', 'ready')
+    await updateCarStock(rental, stock({ mileageKm: '1200' }))
+    await updateCarStock(sale, stock({ mileageKm: '1200' }))
+    expect((await getCar(rental))?.mileageKm).toBeNull()
+    expect((await getCar(sale))?.mileageKm).toBe(1200)
   })
 
-  it('saves only the prices for the car purpose', () => {
-    const rental = newCar('rental', 'R1')
-    const sale = newCar('sale', 'S1')
+  it('saves only the prices for the car purpose', async () => {
+    const rental = await newCar('rental', 'R1')
+    const sale = await newCar('sale', 'S1')
     const prices = { weeklyRate: '190', askingPrice: '15000', minPrice: '14000' }
-    updateCarStock(rental, stock(prices))
-    updateCarStock(sale, stock(prices))
-    expect(getCar(rental)).toMatchObject({ weeklyRateCents: 19000, askingPriceCents: null, minPriceCents: null })
-    expect(getCar(sale)).toMatchObject({ weeklyRateCents: null, askingPriceCents: 1500000, minPriceCents: 1400000 })
+    await updateCarStock(rental, stock(prices))
+    await updateCarStock(sale, stock(prices))
+    expect(await getCar(rental)).toMatchObject({ weeklyRateCents: 19000, askingPriceCents: null, minPriceCents: null })
+    expect(await getCar(sale)).toMatchObject({ weeklyRateCents: null, askingPriceCents: 1500000, minPriceCents: 1400000 })
   })
 
-  it('reports a missing car', () => {
-    expect(updateCarStock(999, stock({}))).toBe('not_found')
+  it('reports a missing car', async () => {
+    expect(await updateCarStock(999, stock({}))).toBe('not_found')
   })
 })

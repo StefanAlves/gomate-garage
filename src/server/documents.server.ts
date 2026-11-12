@@ -1,16 +1,12 @@
 import '@tanstack/react-start/server-only'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
-import { readFile, unlink, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-import { db } from './db.server'
+import { db, inTransaction } from './db.server'
+import { documentStore as store } from './file-store.server'
 import type { DocumentKind } from '~/lib/schemas'
 
-// Photos of customers' ID documents. Files live outside public/ and are only
-// served through the /api/documents/$documentId route, never as static files.
-
-const dir = resolve(process.env.UPLOADS_PATH ?? 'data/uploads', 'customer-documents')
-mkdirSync(dir, { recursive: true })
+// Photos of customers' ID documents. Files live in a private store (see
+// file-store.server.ts) and are only served through the
+// /api/documents/$documentId route, never as static or public files.
 
 export interface CustomerDocument {
   id: number
@@ -26,9 +22,7 @@ const columns = `id, customer_id AS customerId, kind, mime_type AS mimeType, siz
   original_name AS originalName, created_at AS createdAt`
 
 export function documentsForCustomer(customerId: number) {
-  return db
-    .prepare(`SELECT ${columns} FROM customer_documents WHERE customer_id = ? ORDER BY kind`)
-    .all(customerId) as unknown as CustomerDocument[]
+  return db.all<CustomerDocument>(`SELECT ${columns} FROM customer_documents WHERE customer_id = ? ORDER BY kind`, [customerId])
 }
 
 /** The browser's MIME type is only a hint; trust the file's first bytes. */
@@ -49,58 +43,56 @@ export async function saveDocument(customerId: number, kind: DocumentKind, file:
   const type = sniffImage(bytes)
   if (!type) return null
 
+  // The file goes first: a row must never point at a missing file.
   const fileName = `${randomUUID()}.${type.ext}`
-  await writeFile(join(dir, fileName), bytes, { flag: 'wx', mode: 0o600 })
+  await store.put(fileName, bytes, type.mime)
 
-  const previous = db
-    .prepare('SELECT file_name AS fileName FROM customer_documents WHERE customer_id = ? AND kind = ?')
-    .get(customerId, kind) as { fileName: string } | undefined
   try {
-    db.exec('BEGIN')
-    db.prepare('DELETE FROM customer_documents WHERE customer_id = ? AND kind = ?').run(customerId, kind)
-    const { lastInsertRowid } = db
-      .prepare(
+    const { id, previous } = await inTransaction(async () => {
+      const previous = await db.get<{ fileName: string }>(
+        'SELECT file_name AS fileName FROM customer_documents WHERE customer_id = ? AND kind = ?', [customerId, kind],
+      )
+      await db.run('DELETE FROM customer_documents WHERE customer_id = ? AND kind = ?', [customerId, kind])
+      const { lastInsertRowid: id } = await db.run(
         `INSERT INTO customer_documents (customer_id, kind, file_name, mime_type, size_bytes, original_name)
          VALUES (?, ?, ?, ?, ?, ?)`,
+        [customerId, kind, fileName, type.mime, bytes.length, file.name.slice(0, 200) || null],
       )
-      .run(customerId, kind, fileName, type.mime, bytes.length, file.name.slice(0, 200) || null)
-    db.exec('COMMIT')
+      return { id, previous }
+    })
     if (previous) await removeFile(previous.fileName)
-    return Number(lastInsertRowid)
+    return id
   } catch (err) {
-    db.exec('ROLLBACK')
     await removeFile(fileName)
     throw err
   }
 }
 
 export async function deleteDocument(id: number) {
-  const row = db
-    .prepare('DELETE FROM customer_documents WHERE id = ? RETURNING file_name AS fileName')
-    .get(id) as { fileName: string } | undefined
+  const row = await db.get<{ fileName: string }>(
+    'DELETE FROM customer_documents WHERE id = ? RETURNING file_name AS fileName', [id],
+  )
   if (row) await removeFile(row.fileName)
   return !!row
 }
 
 /** File names for a customer, read before the customer is deleted (rows cascade, files don't). */
-export function documentFilesForCustomer(customerId: number) {
-  return (db.prepare('SELECT file_name AS fileName FROM customer_documents WHERE customer_id = ?').all(customerId) as {
-    fileName: string
-  }[]).map((r) => r.fileName)
+export async function documentFilesForCustomer(customerId: number) {
+  const rows = await db.all<{ fileName: string }>(
+    'SELECT file_name AS fileName FROM customer_documents WHERE customer_id = ?', [customerId],
+  )
+  return rows.map((r) => r.fileName)
 }
 
 export async function readDocument(id: number) {
-  const row = db
-    .prepare('SELECT file_name AS fileName, mime_type AS mimeType FROM customer_documents WHERE id = ?')
-    .get(id) as { fileName: string; mimeType: string } | undefined
+  const row = await db.get<{ fileName: string; mimeType: string }>(
+    'SELECT file_name AS fileName, mime_type AS mimeType FROM customer_documents WHERE id = ?', [id],
+  )
   if (!row) return null
-  try {
-    return { body: await readFile(join(dir, row.fileName)), mimeType: row.mimeType }
-  } catch {
-    return null
-  }
+  const body = await store.get(row.fileName)
+  return body ? { body, mimeType: row.mimeType } : null
 }
 
 export async function removeFile(fileName: string) {
-  await unlink(join(dir, fileName)).catch(() => {})
+  await store.remove(fileName)
 }
