@@ -6,7 +6,7 @@ import { describeTarget, fail, hasFlag, openClient } from './lib.ts'
 // Back up first (npm run backup). Turso needs --yes.
 
 const target = describeTarget(process.env)
-const db = openClient(process.env)
+const db = await openClient(process.env)
 const before = await schemaVersion(db)
 console.log(`${target.label}\nSchema version ${before}; this code needs ${latestVersion}.`)
 if (before === latestVersion) process.exit(0)

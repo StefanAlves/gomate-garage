@@ -1,6 +1,6 @@
 import '@tanstack/react-start/server-only'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { InValue, ResultSet, Transaction } from '@libsql/client'
+import type { Client, InValue, ResultSet, Transaction } from '@libsql/client'
 import { checkSchema, openClient, sqlNow } from './migrations.server'
 
 // The app's one database handle. Server-only: the build fails if any client
@@ -11,12 +11,20 @@ import { checkSchema, openClient, sqlNow } from './migrations.server'
 // DATABASE_PATH=:memory:, the only case where migrations run on their own;
 // everywhere else run `npm run migrate` (after a backup).
 
-const client = openClient(process.env)
 const memory = process.env.DATABASE_PATH === ':memory:'
 
-/** Resolves once the schema is known to be current; checked once per server process. */
-let ready: Promise<void> | undefined
-const schemaReady = () => (ready ??= checkSchema(client, { migrate: memory }).catch((err) => {
+/**
+ * The client, opened on first use (not at import), so a missing setting shows
+ * up as an error on the requests that need data instead of crashing the
+ * server; the sign-in page still renders. Resolves once the schema is known to
+ * be current, checked once per server process.
+ */
+let ready: Promise<Client> | undefined
+const connected = () => (ready ??= (async () => {
+  const client = await openClient(process.env)
+  await checkSchema(client, { migrate: memory })
+  return client
+})().catch((err) => {
   ready = undefined // try again on the next request
   throw err
 }))
@@ -47,10 +55,9 @@ function checkNamedArgs(sql: string, args: Args | undefined) {
 }
 
 async function execute(sql: string, args?: Args) {
-  await schemaReady()
   checkNamedArgs(sql, args)
   // Inside inTransaction(), every query goes through that transaction.
-  const target = currentTx.getStore() ?? client
+  const target = currentTx.getStore() ?? (await connected())
   return target.execute({ sql, args: (args ?? []) as InValue[] })
 }
 
@@ -68,8 +75,7 @@ export const db = {
   /** Several statements with no parameters (tests and scripts). Not inside a transaction. */
   async exec(sql: string) {
     if (currentTx.getStore()) throw new Error('db.exec() cannot run inside inTransaction()')
-    await schemaReady()
-    await client.executeMultiple(sql)
+    await (await connected()).executeMultiple(sql)
   },
 }
 
@@ -80,8 +86,7 @@ export const db = {
  */
 export async function inTransaction<T>(fn: () => Promise<T>): Promise<T> {
   if (currentTx.getStore()) return fn()
-  await schemaReady()
-  const tx = await client.transaction('write')
+  const tx = await (await connected()).transaction('write')
   try {
     const out = await currentTx.run(tx, fn)
     await tx.commit()

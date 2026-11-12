@@ -12,5 +12,5 @@ const file = flagValue('--to') ?? `data/backups/garage-${target.remote ? 'turso'
 mkdirSync(file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : '.', { recursive: true })
 
 console.log(`Backing up ${target.label}\n  → ${file}`)
-const { version, counts } = await copyDatabase(openClient(process.env), createClient({ url: `file:${file}` }))
+const { version, counts } = await copyDatabase(await openClient(process.env), createClient({ url: `file:${file}` }))
 console.log(`Done: schema version ${version}, ${Object.values(counts).reduce((a, b) => a + b, 0)} rows.`)

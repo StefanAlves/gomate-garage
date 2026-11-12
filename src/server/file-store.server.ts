@@ -17,10 +17,14 @@ export interface FileStore {
 
 function folderStore(root: string): FileStore {
   const dir = resolve(root)
-  mkdirSync(dir, { recursive: true })
   return {
-    // 'wx': never overwrite; names are random UUIDs.
-    put: (name, bytes) => writeFile(join(dir, name), bytes, { flag: 'wx', mode: 0o600 }),
+    // The folder is made on first save, not at import: on a read-only disk
+    // (a serverless deploy without Blob) only uploads fail, not the server.
+    async put(name, bytes) {
+      mkdirSync(dir, { recursive: true })
+      // 'wx': never overwrite; names are random UUIDs.
+      await writeFile(join(dir, name), bytes, { flag: 'wx', mode: 0o600 })
+    },
     get: (name) => readFile(join(dir, name)).then((b) => new Uint8Array(b), () => null),
     remove: (name) => unlink(join(dir, name)).catch(() => {}),
   }

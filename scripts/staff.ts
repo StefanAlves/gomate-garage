@@ -9,7 +9,7 @@ import { describeTarget, fail, openClient } from './lib.ts'
 //   npm run staff -- enable ana@example.com
 
 const [command, email, ...nameParts] = process.argv.slice(2)
-const db = openClient(process.env)
+const db = await openClient(process.env)
 console.log(describeTarget(process.env).label)
 
 const now = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`

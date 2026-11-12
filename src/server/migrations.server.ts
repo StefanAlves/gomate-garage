@@ -1,7 +1,7 @@
 import '@tanstack/react-start/server-only'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { createClient, LibsqlBatchError, type Client, type InStatement } from '@libsql/client'
+import { createClient as createRemoteClient, LibsqlBatchError, type Client, type InStatement } from '@libsql/client/web'
 
 export const sqlNow = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
 const now = sqlNow
@@ -434,10 +434,17 @@ export const migrations: string[] = [
  * even when .env holds its credentials. Otherwise Turso when
  * TURSO_DATABASE_URL is set (Vercel), else data/garage.db. Kept here, free of
  * app imports, so scripts can use it too.
+ *
+ * Turso goes through the pure-HTTP client; the file client (which loads a
+ * native SQLite engine) is only imported when a file is actually used, so a
+ * serverless deploy never depends on that binary.
  */
-export function openClient(env: Record<string, string | undefined>): Client {
+export async function openClient(env: Record<string, string | undefined>): Promise<Client> {
   if (env.TURSO_DATABASE_URL && !env.DATABASE_PATH)
-    return createClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
+    return createRemoteClient({ url: env.TURSO_DATABASE_URL, authToken: env.TURSO_AUTH_TOKEN })
+  if (env.VERCEL && !env.DATABASE_PATH)
+    throw new Error('TURSO_DATABASE_URL is not set for this deployment. Add it (and TURSO_AUTH_TOKEN) in Vercel → Project → Settings → Environment Variables, then redeploy.')
+  const { createClient } = await import('@libsql/client')
   const path = env.DATABASE_PATH || 'data/garage.db'
   if (path === ':memory:') return createClient({ url: ':memory:' })
   const file = resolve(path)
