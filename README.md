@@ -6,6 +6,8 @@ Customer and car registry for a garage. Built with TanStack Start and SQLite (No
 npm install
 npm run dev                 # http://localhost:3000
 npm run build && npm start  # production (Node 24+)
+npm test                    # Vitest, against an in-memory database
+npm run typecheck
 ```
 
 Data is stored in `data/garage.db`, created on first run. Set `DATABASE_PATH` to use a different file.
@@ -18,33 +20,33 @@ Structure modelled on the GoMate back office (customers and vehicles).
 
 | URL | What it does |
 |---|---|
-| `/customers` | Table: name/company, email, mobile (+ WhatsApp link), location, cars, created. Search (name, company, phone, email, ABN, suburb), sort, page size |
+| `/customers` | Table: name/company, email, mobile (+ WhatsApp link), location, created. Search (name, company, phone, email, ABN, suburb), sort, page size |
 | `/customers/new` | Quick create: personal + contact details |
-| `/customers/:id` | Tabs (`?tab=`): **Contact** (full profile: address, marketing opt-ins, preferred contact, tags, licence/passport), **Cars**, and placeholders for Bookings, Invoices, Comms, Rentals |
-| `/cars` | Table: vehicle, rego, colour, owner, status. Search (rego, make, model, VIN, owner), sort, owner filter (`?owner=business` or a customer id), page size |
-| `/cars/new` | Quick create: owner, status, basic details. `?customerId=` preselects the owner |
-| `/cars/:id` | Maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (status, rent / sale listing and prices, odometer, description, features, compliance + financial summary), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Vehicle history, Reminders, Invoices |
+| `/customers/:id` | Tabs (`?tab=`): **Contact** (full profile: address, marketing opt-ins, preferred contact, tags, licence/passport), and placeholders for Bookings, Invoices, Comms, Rentals |
+| `/cars` | Table: vehicle, rego, colour, purpose, status. Search (rego, make, model, VIN), sort, purpose and status filters, page size |
+| `/cars/new` | Quick create: purpose (Rental car or Sale car, fixed), status (Preparation or Ready), basic details |
+| `/cars/:id` | Purpose and status badges, maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (Preparation ↔ Ready, weekly rent or asking / minimum price by purpose, odometer, description, features, compliance + financial summary), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Vehicle history, Reminders, Invoices |
 | `/fleet` | Fleet overview (GoMate's "Cars" section): income / P&L / ROI tiles by period, cars per stock status, unpaid fines & tolls, rego and insurance due in 30 days |
-| `/fleet/stock` | Business-owned cars as a **board** (Preparation, Ready, Out, Sold, Returned) or a **table** with prices and per-car P&L. Filter for sale / for rent, search, sort (longest in stock, highest value, rego) |
+| `/fleet/stock` | Cars as a **board** (Preparation, Ready, Rented, Under finance, Sold) or a **table** with prices and per-car P&L. Filter by purpose (columns follow it), search, sort (longest in stock, highest value, rego) |
 | `/fleet/fines`, `/fleet/tolls` | Fines and tolls: date, rego, customer, (offence), notice #, amount, due date, status (Not paid, Transferred, Business paid, Paid by renter). Inline add / edit, filters, running total |
 | `/fleet/transactions` | Per-car money ledger: initial investment, expense, rental / sale income, bond received / returned. Tiles, filters (period, vehicle, category, method), inline add / edit, "Add bond", CSV export |
 | `/fleet/rentals`, `/fleet/leads`, `/fleet/invoices` | Placeholders describing the GoMate modules still to build |
 
 ## Rules
 
-Domain language lives in `GLOSSARY.md`. The business rents and sells its own cars only: see `docs/adr/0001-garage-owns-every-car.md`. The rules below describe the code as it is today. Rules marked *(changing)* are replaced by `SPECs/car-purpose-and-ownership.md`, `SPECs/rentals.md`, `SPECs/finance-sales.md` and `SPECs/maintenance.md`.
+Domain language lives in `GLOSSARY.md`. The business rents and sells its own cars only: see `docs/adr/0001-garage-owns-every-car.md`. The rules below describe the code as it is today. Still to build: `SPECs/rentals.md`, `SPECs/finance-sales.md` and `SPECs/maintenance.md`; open points are in `SPECs/open-questions.md`.
 
-- *(changing)* A car is owned by one customer, or by the business when it has no owner (fleet / stock).
+- Every car belongs to the garage. A car has a fixed purpose, Rental car or Sale car, chosen when it's added and never changed.
 - Plates are stored in uppercase and must be unique. VINs, when given, must be 17 characters and unique.
-- A customer who still owns cars, or has fines, tolls or transactions, can't be deleted. The same goes for a car with fines, tolls or transactions.
-- *(changing)* Car status is the stock lifecycle: Preparation → Ready → Out (with a customer) → Sold / Returned. "For rent" and "For sale" are separate flags with their own prices.
+- A customer with fines, tolls or transactions can't be deleted. The same goes for a car with fines, tolls or transactions.
+- Car status follows the purpose. Rental car: Preparation → Ready → Rented → (Return) → Preparation. Sale car: Preparation → Ready → Under finance → Sold. Staff only move a car between Preparation and Ready; the other statuses will be set by Rentals and Finance Sales. Rental cars have a weekly rent; sale cars an asking and minimum price.
 - Money is stored as integer cents. Ledger amounts are positive; the category gives the direction. P&L = rental + sale income − investment − expenses; ROI = P&L ÷ (investment + expenses). Bonds are tracked separately ("bond held") and never count as income.
 - Period filters use the garage's day in Australia/Melbourne; weeks start on Monday.
 - Build and compliance dates are typed as MM/YYYY and stored as YYYY-MM. Other dates are YYYY-MM-DD.
 
 ## Database migrations
 
-`src/server/db.server.ts` keeps an ordered list of migrations and tracks the applied count in `PRAGMA user_version`. They run on server start, each in a transaction with a foreign-key check. Add new migrations to the end of the list; never edit one that has shipped.
+`src/server/migrations.server.ts` keeps an ordered list of migrations and tracks the applied count in `PRAGMA user_version`. They run on server start, each in a transaction with a foreign-key check. Add new migrations to the end of the list; never edit one that has shipped.
 
 ## Layout
 

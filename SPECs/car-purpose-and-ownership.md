@@ -1,6 +1,6 @@
 # Car Purpose and Ownership
 
-Status: ready-for-agent
+Status: done (2026-11-12, branch `car-purpose`)
 Date: 2026-11-12
 Related: GLOSSARY.md, docs/adr/0001-garage-owns-every-car.md. Prerequisite for SPECs/rentals.md, SPECs/finance-sales.md and SPECs/maintenance.md.
 
@@ -51,7 +51,7 @@ The app models a Car as owned by a Customer, or by the business when it has no o
   - replace the `for_rent` / `for_sale` flags with `purpose` and keep the price columns;
   - add a CHECK that ties status to purpose.
 - Data mapping for existing rows:
-  - `purpose`: `for_rent` only → rental; `for_sale` only → sale; both or neither → **sale**, and list those Cars in the migration notes so staff can review them. (There are 11 Cars in the live database, all in Preparation or Ready.)
+  - `purpose`: `for_rent` only → rental; `for_sale` only → sale; both or neither → **sale**. A Sold car is always a sale car, so it stays Sold, and list those Cars in the migration notes so staff can review them. (There are 11 Cars in the live database, all in Preparation or Ready.)
   - Status: `out` → rented if the purpose is rental, else under_finance; `returned` → preparation; the rest unchanged.
   - `customer_id`: dropped. The one Car that has an owner today simply becomes a garage Car.
 - Back up the database file before running, as earlier migrations did.

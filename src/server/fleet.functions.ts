@@ -59,7 +59,10 @@ export const listStock = createServerFn({ method: 'GET' })
 export const updateCarStock = createServerFn({ method: 'POST' })
   .validator(updateCarStockSchema)
   .handler(({ data }): Result<{ id: number }> => {
-    if (!cars.updateCarStock(data.id, data.values)) throw notFound()
+    const outcome = cars.updateCarStock(data.id, data.values)
+    if (outcome === 'not_found') throw notFound()
+    if (outcome === 'status_locked')
+      return { ok: false, errors: { status: 'This car is out with a customer. Its status changes when the rental or sale ends.' } }
     return { ok: true, value: { id: data.id } }
   })
 

@@ -46,7 +46,6 @@ function CustomerList() {
                 <th className="hide-narrow">Email</th>
                 <th>Mobile</th>
                 <th className="hide-narrow">Location</th>
-                <th>Cars</th>
                 <th className="hide-narrow">Created</th>
               </tr>
             </thead>
@@ -74,7 +73,6 @@ function CustomerList() {
                     <td className="hide-narrow">
                       {c.suburb ? `${c.suburb}${c.state ? `, ${c.state}` : ''}` : <span className="muted">—</span>}
                     </td>
-                    <td><span className="badge">{c.carCount}</span></td>
                     <td className="hide-narrow muted nowrap">{formatShortDate(c.createdAt)}</td>
                   </tr>
                 )

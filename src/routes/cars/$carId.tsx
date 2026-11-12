@@ -3,10 +3,10 @@ import { useServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { carTabSearchSchema, idSchema, type CAR_TABS } from '~/lib/schemas'
 import {
-  BUSINESS_OWNER, carName, carStatusLabel, categoryLabel, chargeStatusLabel, formatDate, formatKm, formatMoney,
+  carName, carPurposeLabel, carStatusLabel, categoryLabel, chargeStatusLabel, formatDate, formatKm, formatMoney,
   formatMoneyShort, formatPercent, formatSigned, methodLabel,
 } from '~/lib/format'
-import { deleteCar, getCar, listCustomerOptions, updateCar } from '~/server/garage.functions'
+import { deleteCar, getCar, updateCar } from '~/server/garage.functions'
 import { getCarFleetRecords, updateCarStock } from '~/server/fleet.functions'
 import type { Charge } from '~/server/charges.server'
 import { CarForm } from '~/components/car-form'
@@ -22,12 +22,8 @@ export const Route = createFileRoute('/cars/$carId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.carId })
     if (!parsed.success) throw notFound()
-    const [car, owners, records] = await Promise.all([
-      getCar({ data: parsed.data }),
-      listCustomerOptions(),
-      getCarFleetRecords({ data: parsed.data }),
-    ])
-    return { car, owners, records }
+    const [car, records] = await Promise.all([getCar({ data: parsed.data }), getCarFleetRecords({ data: parsed.data })])
+    return { car, records }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.car.plate ?? 'Car'} · Garage` }] }),
   component: CarPage,
@@ -45,19 +41,12 @@ function CarPage() {
       <header className="stack tight">
         <div className="row wrap">
           <h1>{carName(car)}{car.variant && <span className="muted"> {car.variant}</span>}</h1>
+          <span className={`badge purpose-${car.purpose}`}>{carPurposeLabel[car.purpose]}</span>
           <span className={`badge status-${car.status}`}>{carStatusLabel[car.status]}</span>
           <span className="plate">{car.plate}</span>
           {car.writtenOff && <span className="badge urgent">Written off</span>}
         </div>
-        <p className="muted small">
-          Owner:{' '}
-          {car.customerId == null ? (
-            BUSINESS_OWNER
-          ) : (
-            <Link to="/customers/$customerId" params={{ customerId: String(car.customerId) }}>{car.ownerName}</Link>
-          )}
-          {' · '}Odometer {formatKm(car.mileageKm)}
-        </p>
+        <p className="muted small">Odometer {formatKm(car.mileageKm)}</p>
       </header>
 
       <MaintenanceSummary />
@@ -136,7 +125,7 @@ function MaintenanceSummary() {
 }
 
 function SpecsTab() {
-  const { car, owners } = Route.useLoaderData()
+  const { car } = Route.useLoaderData()
   const router = useRouter()
   const navigate = useNavigate()
   const update = useServerFn(updateCar)
@@ -149,7 +138,6 @@ function SpecsTab() {
       {saved && <p className="notice" role="status">Saved.</p>}
       <CarForm
         key={car.updatedAt}
-        owners={owners}
         initial={car}
         submitLabel="Save changes"
         onSubmit={(values) => update({ data: { id: car.id, values } })}
@@ -183,9 +171,6 @@ function StockTab() {
     <div className="two-col wide-left">
       <section className="panel stack">
         {saved && <p className="notice" role="status">Saved.</p>}
-        {car.customerId != null && (
-          <p className="notice">This car belongs to {car.ownerName}. Only business-owned cars appear on the Stock board.</p>
-        )}
         <StockForm
           key={car.updatedAt}
           car={car}

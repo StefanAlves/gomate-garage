@@ -1,10 +1,11 @@
-import { CAR_STATUSES, COLOURS, FUEL_TYPES, carInputSchema, type CarValues } from '~/lib/schemas'
-import { BUSINESS_OWNER, carStatusLabel, formatMonth, fuelLabel } from '~/lib/format'
+import {
+  CAR_PURPOSES, COLOURS, FUEL_TYPES, MANUAL_CAR_STATUSES, carInputSchema, newCarInputSchema, type CarValues, type NewCarValues,
+} from '~/lib/schemas'
+import { carPurposeLabel, carStatusLabel, formatMonth, fuelLabel } from '~/lib/format'
 import { FormError, FormSection, useSchemaForm, type Result } from './form'
 
-type Owner = { id: number; name: string; phone: string }
-
-const statusOptions = CAR_STATUSES.map((s) => [s, carStatusLabel[s]] as const)
+const purposeOptions = CAR_PURPOSES.map((p) => [p, carPurposeLabel[p]] as const)
+const statusOptions = MANUAL_CAR_STATUSES.map((s) => [s, carStatusLabel[s]] as const)
 const colourOptions = COLOURS.map((c) => [c, c] as const)
 const fuelOptions = FUEL_TYPES.map((f) => [f, fuelLabel[f]] as const)
 
@@ -13,8 +14,9 @@ const str = (v: string | number | null | undefined) => (v == null ? '' : String(
 /** Stored car → raw form values. */
 function toFormValues(v: Partial<CarValues> = {}) {
   return {
-    status: v.status ?? 'ready',
-    customerId: str(v.customerId),
+    // Only read by the new-car schema; the edit schema drops them.
+    purpose: '',
+    status: 'preparation',
     plate: v.plate ?? '',
     make: v.make ?? '',
     model: v.model ?? '',
@@ -46,44 +48,47 @@ function toFormValues(v: Partial<CarValues> = {}) {
   }
 }
 
+type Submit<T> = (values: T) => Promise<Result<{ id: number }>>
+
 /**
- * Car form. `compact` shows only what's needed to register a car quickly;
- * the full form is the Specifications tab.
+ * Car form. `isNew` is the quick "add a car" form: purpose (fixed for life),
+ * starting status and the basic details. Otherwise it's the full
+ * Specifications tab, where purpose and status can't be changed.
  */
 export function CarForm({
-  owners,
   initial,
-  compact = false,
   submitLabel,
-  onSubmit,
   onSuccess,
   children,
+  ...mode
 }: {
-  owners: Owner[]
   initial?: Partial<CarValues>
-  compact?: boolean
   submitLabel: string
-  onSubmit: (values: CarValues) => Promise<Result<{ id: number }>>
   onSuccess: (value: { id: number }) => void | Promise<void>
   children?: React.ReactNode
-}) {
-  const { form, formError, onSubmit: handle } = useSchemaForm({
-    schema: carInputSchema,
+} & ({ isNew: true; onSubmit: Submit<NewCarValues> } | { isNew?: false; onSubmit: Submit<CarValues> })) {
+  const { form, formError, onSubmit: handle } = useSchemaForm<ReturnType<typeof toFormValues>, CarValues, { id: number }>({
+    schema: mode.isNew ? newCarInputSchema : carInputSchema,
     defaultValues: toFormValues(initial),
-    submit: onSubmit,
+    // The new-car schema's output always carries purpose and status.
+    submit: mode.isNew ? (values) => mode.onSubmit(values as NewCarValues) : mode.onSubmit,
     onSuccess,
   })
+  const compact = !!mode.isNew
   const color = initial?.color
   const colours = color && !(COLOURS as readonly string[]).includes(color) ? [...colourOptions, [color, color] as const] : colourOptions
-  const ownerOptions = [['', `${BUSINESS_OWNER} (fleet / stock)`] as const, ...owners.map((o) => [String(o.id), `${o.name} · ${o.phone}`] as const)]
   const upper = { textTransform: 'uppercase' } as const
 
   return (
     <form className="stack form" onSubmit={handle} noValidate>
-      <FormSection title="Ownership">
-        <form.AppField name="customerId">{(f) => <f.SelectField label="Owner" options={ownerOptions} emptyLabel={null} />}</form.AppField>
-        <form.AppField name="status">{(f) => <f.SelectField label="Status" options={statusOptions} emptyLabel={null} />}</form.AppField>
-      </FormSection>
+      {compact && (
+        <FormSection title="Purpose" description="Every car is kept for renting or for selling. This can't be changed later.">
+          <form.AppField name="purpose">
+            {(f) => <f.SelectField label="Purpose" options={purposeOptions} emptyLabel="Choose…" required />}
+          </form.AppField>
+          <form.AppField name="status">{(f) => <f.SelectField label="Status" options={statusOptions} emptyLabel={null} />}</form.AppField>
+        </FormSection>
+      )}
 
       <FormSection title="Vehicle details">
         <form.AppField name="make">{(f) => <f.TextField label="Make" required placeholder="e.g. Toyota" />}</form.AppField>

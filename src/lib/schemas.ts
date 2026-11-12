@@ -5,8 +5,16 @@ import { z } from 'zod'
 
 // ---- Option lists ------------------------------------------------------------
 
-/** Where a car is in its stock lifecycle (GoMate's Stock board columns). */
-export const CAR_STATUSES = ['preparation', 'ready', 'out', 'sold', 'returned'] as const
+/** What a car is kept for. Chosen when the car is added and never changed (see GLOSSARY.md). */
+export const CAR_PURPOSES = ['rental', 'sale'] as const
+/** Where a car is in its lifecycle (the Stock board columns). */
+export const CAR_STATUSES = ['preparation', 'ready', 'rented', 'under_finance', 'sold'] as const
+/** Statuses staff set by hand. The others follow from a Rental or Finance Sale. */
+export const MANUAL_CAR_STATUSES = ['preparation', 'ready'] as const
+export const STATUSES_BY_PURPOSE = {
+  rental: ['preparation', 'ready', 'rented'],
+  sale: ['preparation', 'ready', 'under_finance', 'sold'],
+} as const satisfies Record<(typeof CAR_PURPOSES)[number], readonly (typeof CAR_STATUSES)[number][]>
 export const FUEL_TYPES = ['petrol', 'diesel', 'hybrid', 'electric'] as const
 export const COLOURS = [
   'White', 'Black', 'Silver', 'Grey', 'Red', 'Blue', 'Green', 'Yellow', 'Orange',
@@ -15,7 +23,9 @@ export const COLOURS = [
 export const CONTACT_METHODS = ['email', 'sms', 'whatsapp', 'phone'] as const
 export const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'] as const
 
+export type CarPurpose = (typeof CAR_PURPOSES)[number]
 export type CarStatus = (typeof CAR_STATUSES)[number]
+export type ManualCarStatus = (typeof MANUAL_CAR_STATUSES)[number]
 export type FuelType = (typeof FUEL_TYPES)[number]
 export type ContactMethod = (typeof CONTACT_METHODS)[number]
 export type AuState = (typeof AU_STATES)[number]
@@ -128,11 +138,8 @@ export type CustomerValues = z.output<typeof customerInputSchema>
 
 const currentYear = new Date().getFullYear()
 
+/** Vehicle details (the Specifications tab). Purpose and status are set elsewhere. */
 export const carInputSchema = z.object({
-  status: z.enum(CAR_STATUSES).default('ready'),
-  /** Empty = owned by the business (fleet / stock). */
-  customerId: z.union([z.literal(''), z.coerce.number().int().positive()])
-    .transform((v) => (v === '' ? null : v)).nullable().default(null),
   plate: z
     .string()
     .trim()
@@ -173,12 +180,21 @@ export const carInputSchema = z.object({
 export type CarInput = z.input<typeof carInputSchema>
 export type CarValues = z.output<typeof carInputSchema>
 
-/** The car's Stock tab: lifecycle status, sale / rent listing and odometer. */
+/** Adding a car: details plus its fixed purpose and a starting status. */
+export const newCarInputSchema = carInputSchema.extend({
+  purpose: z.enum(CAR_PURPOSES, 'Choose rental or sale'),
+  status: z.enum(MANUAL_CAR_STATUSES).default('preparation'),
+})
+export type NewCarValues = z.output<typeof newCarInputSchema>
+
+/**
+ * The car's Stock tab: status, prices and listing. `status` is only sent while
+ * the car is in Preparation or Ready. Only the prices for the car's purpose are
+ * saved (weekly rate for rental cars, asking / minimum for sale cars).
+ */
 export const carStockInputSchema = z.object({
-  status: z.enum(CAR_STATUSES).default('ready'),
-  forRent: checkbox,
+  status: z.enum(MANUAL_CAR_STATUSES).optional(),
   weeklyRate: optionalMoney,
-  forSale: checkbox,
   askingPrice: optionalMoney,
   minPrice: optionalMoney,
   mileageKm: optionalInt(0, 5_000_000),
@@ -248,18 +264,18 @@ export const CAR_SORTS = ['recent', 'oldest', 'make_asc', 'make_desc'] as const
 export const carListSearchSchema = z.object({
   ...pageSearch,
   sort: z.enum(CAR_SORTS).default('recent').catch('recent'),
-  /** Absent = all owners; "business" = fleet; a number = that customer. */
-  owner: z.union([z.literal('business'), z.coerce.number().int().positive()]).optional().catch(undefined),
+  purpose: z.enum(CAR_PURPOSES).optional().catch(undefined),
+  status: z.enum(CAR_STATUSES).optional().catch(undefined),
 })
 export const carListSearchDefaults = carListSearchSchema.parse({})
 
 const periodParam = z.enum(PERIODS).default('all').catch('all')
 
-/** Stock board/table: business-owned cars only. */
+/** Stock board/table. */
 export const STOCK_SORTS = ['longest', 'value', 'rego'] as const
 export const stockSearchSchema = z.object({
   view: z.enum(['board', 'table']).default('board').catch('board'),
-  offered: z.enum(['all', 'sale', 'rent']).default('all').catch('all'),
+  purpose: z.enum(['all', ...CAR_PURPOSES]).default('all').catch('all'),
   sort: z.enum(STOCK_SORTS).default('longest').catch('longest'),
   q: z.string().trim().max(100).optional().catch(undefined),
 })
@@ -284,13 +300,9 @@ export const transactionListSearchDefaults = transactionListSearchSchema.parse({
 
 export const overviewSearchSchema = z.object({ period: periodParam })
 
-export const newCarSearchSchema = z.object({
-  customerId: z.coerce.number().int().positive().optional().catch(undefined),
-})
-
 // ---- Detail page tabs ----------------------------------------------------------
 
-export const CUSTOMER_TABS = ['contact', 'cars', 'bookings', 'invoices', 'comms', 'rentals'] as const
+export const CUSTOMER_TABS = ['contact', 'bookings', 'invoices', 'comms', 'rentals'] as const
 export const customerTabSearchSchema = z.object({ tab: z.enum(CUSTOMER_TABS).default('contact').catch('contact') })
 
 export const CAR_TABS = ['specs', 'stock', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const

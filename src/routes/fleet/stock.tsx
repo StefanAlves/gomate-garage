@@ -1,5 +1,5 @@
 import { Link, createFileRoute, stripSearchParams } from '@tanstack/react-router'
-import { CAR_STATUSES, stockSearchDefaults, stockSearchSchema } from '~/lib/schemas'
+import { CAR_STATUSES, STATUSES_BY_PURPOSE, stockSearchDefaults, stockSearchSchema } from '~/lib/schemas'
 import {
   carStatusLabel, formatDate, formatKm, formatMoneyShort, formatPercent, formatSigned, fuelLabel,
 } from '~/lib/format'
@@ -10,7 +10,7 @@ import { ParamSelect, SearchBox } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/stock')({
   validateSearch: stockSearchSchema,
   search: { middlewares: [stripSearchParams(stockSearchDefaults)] },
-  loaderDeps: ({ search: { offered, sort, q } }) => ({ offered, sort, q }),
+  loaderDeps: ({ search: { purpose, sort, q } }) => ({ purpose, sort, q }),
   loader: ({ deps }) => listStock({ data: { ...stockSearchDefaults, ...deps } }),
   head: () => ({ meta: [{ title: 'Stock · Garage' }] }),
   component: StockPage,
@@ -44,11 +44,11 @@ function StockPage() {
       </div>
 
       <div className="row wrap">
-        <span className="segmented" role="group" aria-label="Offered for">
-          {(['all', 'sale', 'rent'] as const).map((o) => (
-            <Link key={o} from={Route.fullPath} search={(p) => ({ ...p, offered: o })} replace activeProps={{}}
-              className={search.offered === o ? 'active' : undefined}>
-              {o === 'all' ? 'All' : o === 'sale' ? 'For sale' : 'For rent'}
+        <span className="segmented" role="group" aria-label="Purpose">
+          {(['all', 'rental', 'sale'] as const).map((p) => (
+            <Link key={p} from={Route.fullPath} search={(s) => ({ ...s, purpose: p })} replace activeProps={{}}
+              className={search.purpose === p ? 'active' : undefined}>
+              {p === 'all' ? 'All' : p === 'rental' ? 'Rental cars' : 'Sale cars'}
             </Link>
           ))}
         </span>
@@ -56,32 +56,29 @@ function StockPage() {
         <ParamSelect from="/fleet/stock" param="sort" label="Sort" value={search.sort} options={sortOptions} />
       </div>
 
-      <p className="muted small">Business-owned cars only. Customer cars live under <Link to="/cars">Cars</Link>.</p>
-
-      {search.view === 'board' ? <Board items={items} /> : <StockTable items={items} />}
+      {search.view === 'board' ? (
+        <Board items={items} statuses={search.purpose === 'all' ? CAR_STATUSES : STATUSES_BY_PURPOSE[search.purpose]} />
+      ) : (
+        <StockTable items={items} />
+      )}
     </div>
   )
 }
 
-function Offered({ car }: { car: StockItem }) {
-  return (
-    <span className="row tight">
-      {car.forRent && <span className="badge offer-rent">Rent</span>}
-      {car.forSale && <span className="badge offer-sale">Sale</span>}
-    </span>
-  )
+function Purpose({ car }: { car: StockItem }) {
+  return <span className={`badge purpose-${car.purpose}`}>{car.purpose === 'rental' ? 'Rent' : 'Sale'}</span>
 }
 
 function Price({ car }: { car: StockItem }) {
-  if (car.forSale && car.askingPriceCents != null) return <>{formatMoneyShort(car.askingPriceCents)}</>
-  if (car.forRent && car.weeklyRateCents != null) return <>{formatMoneyShort(car.weeklyRateCents)}/wk</>
+  if (car.purpose === 'sale' && car.askingPriceCents != null) return <>{formatMoneyShort(car.askingPriceCents)}</>
+  if (car.purpose === 'rental' && car.weeklyRateCents != null) return <>{formatMoneyShort(car.weeklyRateCents)}/wk</>
   return null
 }
 
-function Board({ items }: { items: StockItem[] }) {
+function Board({ items, statuses }: { items: StockItem[]; statuses: readonly (typeof CAR_STATUSES)[number][] }) {
   return (
     <div className="board">
-      {CAR_STATUSES.map((status) => {
+      {statuses.map((status) => {
         const cars = items.filter((c) => c.status === status)
         return (
           <section key={status} className="board-col" aria-label={carStatusLabel[status]}>
@@ -97,7 +94,7 @@ function Board({ items }: { items: StockItem[] }) {
                   {car.color && <span className="muted small">{car.color}</span>}
                 </span>
                 <span className="row between">
-                  <Offered car={car} />
+                  <Purpose car={car} />
                   <span className="small strong"><Price car={car} /></span>
                 </span>
               </Link>
@@ -116,7 +113,7 @@ function StockTable({ items }: { items: StockItem[] }) {
       <table className="data-table nowrap">
         <thead>
           <tr>
-            <th>Status</th><th>Offered for</th><th>Vehicle</th><th>Rego</th><th>Colour</th><th>Body</th><th>Trans.</th>
+            <th>Status</th><th>Purpose</th><th>Vehicle</th><th>Rego</th><th>Colour</th><th>Body</th><th>Trans.</th>
             <th>Fuel</th><th className="num">Odometer</th><th className="num">Rent/wk</th><th className="num">Asking</th>
             <th className="num">Min</th><th className="num">Invested</th><th className="num">Expenses</th>
             <th className="num">Rental income</th><th className="num">Sale income</th><th className="num">P&L</th>
@@ -127,7 +124,7 @@ function StockTable({ items }: { items: StockItem[] }) {
           {items.map((car) => (
             <tr key={car.id}>
               <td><span className={`badge status-${car.status}`}>{carStatusLabel[car.status]}</span></td>
-              <td><Offered car={car} /></td>
+              <td><Purpose car={car} /></td>
               <td>
                 <Link to="/cars/$carId" params={{ carId: String(car.id) }} search={{ tab: 'stock' }}>
                   {car.year ? `${car.year} ` : ''}{car.make} {car.model}
@@ -139,9 +136,9 @@ function StockTable({ items }: { items: StockItem[] }) {
               <td>{car.transmission ?? '—'}</td>
               <td>{car.fuelType ? fuelLabel[car.fuelType] : '—'}</td>
               <td className="num">{formatKm(car.mileageKm)}</td>
-              <td className="num">{car.forRent ? formatMoneyShort(car.weeklyRateCents) : '—'}</td>
-              <td className="num">{car.forSale ? formatMoneyShort(car.askingPriceCents) : '—'}</td>
-              <td className="num">{car.forSale ? formatMoneyShort(car.minPriceCents) : '—'}</td>
+              <td className="num">{car.purpose === 'rental' ? formatMoneyShort(car.weeklyRateCents) : '—'}</td>
+              <td className="num">{car.purpose === 'sale' ? formatMoneyShort(car.askingPriceCents) : '—'}</td>
+              <td className="num">{car.purpose === 'sale' ? formatMoneyShort(car.minPriceCents) : '—'}</td>
               <td className="num">{formatMoneyShort(car.investedCents)}</td>
               <td className="num">{formatMoneyShort(car.expensesCents)}</td>
               <td className="num">{formatMoneyShort(car.rentalIncomeCents)}</td>

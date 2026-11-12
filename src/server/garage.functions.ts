@@ -1,13 +1,13 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
 import {
-  carInputSchema,
   customerInputSchema,
   carListSearchSchema,
   customerListSearchSchema,
   documentUploadSchema,
   fieldErrors,
   idSchema,
+  newCarInputSchema,
   updateCarSchema,
   updateCustomerSchema,
 } from '~/lib/schemas'
@@ -18,7 +18,7 @@ import * as documents from './documents.server'
 
 // Typed RPC boundary. Safe to import anywhere: on the client each export is a
 // fetch stub; handlers and the *.server imports they use stay on the server.
-// Expected failures (duplicate plate, customer still owns cars) come back as
+// Expected failures (duplicate plate, records still linked) come back as
 // `{ ok: false, errors }` so forms can show them next to the right field.
 
 type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> }
@@ -36,7 +36,7 @@ export const getCustomer = createServerFn({ method: 'GET' })
   .handler(({ data }) => {
     const customer = customers.getCustomer(data.id)
     if (!customer) throw notFound()
-    return { customer, cars: cars.carsForCustomer(data.id), documents: documents.documentsForCustomer(data.id) }
+    return { customer, documents: documents.documentsForCustomer(data.id) }
   })
 
 export const createCustomer = createServerFn({ method: 'POST' })
@@ -62,7 +62,7 @@ export const deleteCustomer = createServerFn({ method: 'POST' })
       if (isForeignKeyViolation(err))
         return {
           ok: false,
-          errors: { form: 'This customer still has cars, fines, tolls or transactions. Reassign or delete those first.' },
+          errors: { form: 'This customer still has fines, tolls or transactions. Reassign or delete those first.' },
         }
       throw err
     }
@@ -98,7 +98,6 @@ export const deleteCustomerDocument = createServerFn({ method: 'POST' })
 function carWriteError(err: unknown): Result<never> {
   if (isUniqueViolation(err, 'cars.plate')) return { ok: false, errors: { plate: 'A car with this plate is already registered' } }
   if (isUniqueViolation(err, 'cars.vin')) return { ok: false, errors: { vin: 'A car with this VIN is already registered' } }
-  if (isForeignKeyViolation(err)) return { ok: false, errors: { customerId: 'Owner no longer exists' } }
   throw err
 }
 
@@ -115,7 +114,7 @@ export const getCar = createServerFn({ method: 'GET' })
   })
 
 export const createCar = createServerFn({ method: 'POST' })
-  .validator(carInputSchema)
+  .validator(newCarInputSchema)
   .handler(({ data }): Result<{ id: number }> => {
     try {
       return { ok: true, value: { id: cars.insertCar(data) } }

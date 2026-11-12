@@ -4,7 +4,7 @@ import type { Charge } from '~/server/charges.server'
 import { FormError, useSchemaForm, type Result } from './form'
 
 export type PickerOptions = {
-  cars: { id: number; plate: string; name: string; customerId: number | null }[]
+  cars: { id: number; plate: string; name: string }[]
   customers: { id: number; name: string; phone: string }[]
 }
 
@@ -55,15 +55,7 @@ export function ChargeForm({
     <form className="form form-grid" onSubmit={handle} noValidate>
       <form.AppField name="incurredOn">{(f) => <f.TextField label={fine ? 'Offence date' : 'Travel date'} type="date" required />}</form.AppField>
       <form.AppField name="dueOn">{(f) => <f.TextField label="Due date" type="date" />}</form.AppField>
-      <form.AppField
-        name="carId"
-        listeners={{
-          onChange: ({ value }) => {
-            const owner = options.cars.find((c) => String(c.id) === value)?.customerId
-            if (owner != null && form.getFieldValue('customerId') === '') form.setFieldValue('customerId', String(owner))
-          },
-        }}
-      >
+      <form.AppField name="carId">
         {(f) => <f.SelectField label="Vehicle (rego)" options={carOptions} emptyLabel="Unknown vehicle" />}
       </form.AppField>
       <form.AppField name="customerId">{(f) => <f.SelectField label="Customer" options={customerOptions} emptyLabel="Unknown" />}</form.AppField>

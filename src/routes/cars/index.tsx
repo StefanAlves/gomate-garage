@@ -1,17 +1,14 @@
 import { Link, createFileRoute, stripSearchParams } from '@tanstack/react-router'
-import { carListSearchDefaults, carListSearchSchema } from '~/lib/schemas'
-import { BUSINESS_OWNER, carName, carStatusLabel } from '~/lib/format'
-import { listCars, listCustomerOptions } from '~/server/garage.functions'
+import { CAR_PURPOSES, CAR_STATUSES, carListSearchDefaults, carListSearchSchema } from '~/lib/schemas'
+import { carName, carPurposeLabel, carStatusLabel } from '~/lib/format'
+import { listCars } from '~/server/garage.functions'
 import { Pager, ParamSelect, SearchBox } from '~/components/list-toolbar'
 
 export const Route = createFileRoute('/cars/')({
   validateSearch: carListSearchSchema,
   search: { middlewares: [stripSearchParams(carListSearchDefaults)] },
   loaderDeps: ({ search }) => search,
-  loader: async ({ deps }) => {
-    const [list, owners] = await Promise.all([listCars({ data: deps }), listCustomerOptions()])
-    return { ...list, owners }
-  },
+  loader: ({ deps }) => listCars({ data: deps }),
   head: () => ({ meta: [{ title: 'Cars · Garage' }] }),
   component: CarList,
 })
@@ -22,16 +19,13 @@ const sortOptions = [
   ['make_asc', 'Make A–Z'],
   ['make_desc', 'Make Z–A'],
 ] as const
+const purposeOptions = [['', 'All purposes'] as const, ...CAR_PURPOSES.map((p) => [p, carPurposeLabel[p]] as const)]
+const statusOptions = [['', 'All statuses'] as const, ...CAR_STATUSES.map((s) => [s, carStatusLabel[s]] as const)]
 
 function CarList() {
-  const { q, sort, owner, size } = Route.useSearch()
-  const { items, total, page, pageCount, owners } = Route.useLoaderData()
-  const ownerOptions = [
-    ['', 'All owners'] as const,
-    ['business', BUSINESS_OWNER] as const,
-    ...owners.map((o) => [String(o.id), o.name] as const),
-  ]
-  const filtered = !!q || owner !== undefined
+  const { q, sort, purpose, status, size } = Route.useSearch()
+  const { items, total, page, pageCount } = Route.useLoaderData()
+  const filtered = !!q || purpose !== undefined || status !== undefined
 
   return (
     <div className="stack">
@@ -40,9 +34,10 @@ function CarList() {
         <Link to="/cars/new" className="button">New car</Link>
       </div>
       <div className="row wrap">
-        <SearchBox from="/cars/" q={q} placeholder="Search rego, make, model, VIN or owner…" />
+        <SearchBox from="/cars/" q={q} placeholder="Search rego, make, model or VIN…" />
         <ParamSelect from="/cars/" param="sort" label="Sort" value={sort} options={sortOptions} />
-        <ParamSelect from="/cars/" param="owner" label="Owner" value={owner === undefined ? '' : String(owner)} options={ownerOptions} />
+        <ParamSelect from="/cars/" param="purpose" label="Purpose" value={purpose ?? ''} options={purposeOptions} />
+        <ParamSelect from="/cars/" param="status" label="Status" value={status ?? ''} options={statusOptions} />
       </div>
       {items.length === 0 ? (
         <div className="panel muted">
@@ -56,8 +51,8 @@ function CarList() {
                 <th>Vehicle</th>
                 <th>Rego</th>
                 <th className="hide-narrow">Colour</th>
-                <th>Owner</th>
-                <th className="hide-narrow">Status</th>
+                <th>Purpose</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -71,14 +66,8 @@ function CarList() {
                   </td>
                   <td><span className="plate">{car.plate}</span></td>
                   <td className="hide-narrow">{car.color ?? <span className="muted">—</span>}</td>
+                  <td><span className={`badge purpose-${car.purpose}`}>{carPurposeLabel[car.purpose]}</span></td>
                   <td>
-                    {car.customerId == null ? (
-                      <span className="muted">{BUSINESS_OWNER}</span>
-                    ) : (
-                      <Link to="/customers/$customerId" params={{ customerId: String(car.customerId) }}>{car.ownerName}</Link>
-                    )}
-                  </td>
-                  <td className="hide-narrow">
                     <span className={`badge status-${car.status}`} title={carName(car)}>{carStatusLabel[car.status]}</span>
                   </td>
                 </tr>

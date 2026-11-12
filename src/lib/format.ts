@@ -1,4 +1,4 @@
-import type { CarFeature, CarStatus, ChargeStatus, ContactMethod, DocumentKind, FuelType, PaymentMethod, TransactionCategory } from './schemas'
+import type { CarFeature, CarPurpose, CarStatus, ChargeStatus, ContactMethod, DocumentKind, FuelType, PaymentMethod, TransactionCategory } from './schemas'
 
 // Fixed locale + UTC so server and client render identical text (no hydration mismatch).
 const date = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeZone: 'UTC' })
@@ -18,8 +18,6 @@ export const customerName = (c: { firstName: string; lastName: string | null }) 
 
 export const initials = (c: { firstName: string; lastName: string | null }) =>
   `${c.firstName[0] ?? ''}${c.lastName?.[0] ?? ''}`.toUpperCase()
-
-export const BUSINESS_OWNER = 'Business'
 
 /** wa.me link for a phone number; Australian local numbers (0…) get the +61 prefix. */
 export function whatsappUrl(phone: string) {
@@ -41,12 +39,17 @@ export const formatSigned = (cents: number) => `${cents < 0 ? '−' : '+'}${whol
 export const centsToInput = (cents: number | null) => (cents == null ? '' : String(cents / 100))
 export const formatPercent = (ratio: number | null) => (ratio == null ? '—' : `${Math.round(ratio * 100)}%`)
 
+export const carPurposeLabel: Record<CarPurpose, string> = {
+  rental: 'Rental car',
+  sale: 'Sale car',
+}
+
 export const carStatusLabel: Record<CarStatus, string> = {
   preparation: 'Preparation',
   ready: 'Ready',
-  out: 'Out',
+  rented: 'Rented',
+  under_finance: 'Under finance',
   sold: 'Sold',
-  returned: 'Returned',
 }
 
 export const featureLabel: Record<CarFeature, string> = {

@@ -29,7 +29,6 @@ export interface Customer {
 }
 export interface CustomerListItem
   extends Pick<Customer, 'id' | 'firstName' | 'lastName' | 'company' | 'email' | 'phone' | 'suburb' | 'state' | 'createdAt'> {
-  carCount: number
 }
 
 type Row = Omit<Customer, 'newsletterOptIn' | 'marketingOptIn' | 'preferredContact' | 'tags'> & {
@@ -87,17 +86,17 @@ export function listCustomers({ q, page, size, sort }: z.output<typeof customerL
   const items = db
     .prepare(
       `SELECT c.id, c.first_name AS firstName, c.last_name AS lastName, c.company, c.email, c.phone, c.suburb, c.state,
-              c.created_at AS createdAt, COUNT(car.id) AS carCount
-       FROM customers c LEFT JOIN cars car ON car.customer_id = c.id
+              c.created_at AS createdAt
+       FROM customers c
        ${where}
-       GROUP BY c.id ORDER BY ${orderBy[sort]}
+       ORDER BY ${orderBy[sort]}
        LIMIT :limit OFFSET :offset`,
     )
     .all({ ...params, limit: size, offset: (current - 1) * size }) as unknown as CustomerListItem[]
   return { items, total, page: current, pageCount }
 }
 
-/** Compact list for owner pickers and filters. */
+/** Compact list for customer pickers and filters. */
 export function customerOptions() {
   return db
     .prepare(`SELECT c.id, ${fullName} AS name, c.phone FROM customers c ORDER BY c.first_name COLLATE NOCASE, c.last_name COLLATE NOCASE`)

@@ -2,7 +2,7 @@ import { Link, createFileRoute, notFound, stripSearchParams, useNavigate, useRou
 import { useServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { customerTabSearchSchema, idSchema, type CUSTOMER_TABS } from '~/lib/schemas'
-import { carName, carStatusLabel, customerName, formatDate, whatsappUrl } from '~/lib/format'
+import { customerName, formatDate, whatsappUrl } from '~/lib/format'
 import { deleteCustomer, getCustomer, updateCustomer } from '~/server/garage.functions'
 import { CustomerForm } from '~/components/customer-form'
 import { CustomerDocuments } from '~/components/customer-documents'
@@ -26,7 +26,7 @@ export const Route = createFileRoute('/customers/$customerId')({
 })
 
 function CustomerPage() {
-  const { customer, cars } = Route.useLoaderData()
+  const { customer } = Route.useLoaderData()
   const { tab } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const wa = whatsappUrl(customer.phone)
@@ -58,7 +58,6 @@ function CustomerPage() {
         onChange={(t) => navigate({ search: { tab: t === 'contact' ? undefined : t }, replace: true })}
         tabs={[
           { id: 'contact', label: 'Contact' },
-          { id: 'cars', label: 'Cars', count: cars.length },
           { id: 'bookings', label: 'Bookings' },
           { id: 'invoices', label: 'Invoices' },
           { id: 'comms', label: 'Comms' },
@@ -68,31 +67,6 @@ function CustomerPage() {
           switch (key) {
             case 'contact':
               return <ContactTab />
-            case 'cars':
-              return (
-                <section className="panel stack">
-                  <div className="row between wrap">
-                    <h2>Registered vehicles</h2>
-                    <Link to="/cars/new" search={{ customerId: customer.id }} className="button ghost">Register a car</Link>
-                  </div>
-                  {cars.length === 0 ? (
-                    <p className="muted">No vehicles registered for this customer.</p>
-                  ) : (
-                    <ul className="list">
-                      {cars.map((car) => (
-                        <li key={car.id}>
-                          <Link to="/cars/$carId" params={{ carId: String(car.id) }} className="list-item">
-                            <span className="plate">{car.plate}</span>
-                            <span className="grow">{carName(car)}{car.variant && <span className="muted"> {car.variant}</span>}</span>
-                            <span className="muted small hide-narrow">{car.color}</span>
-                            <span className={`badge status-${car.status}`}>{carStatusLabel[car.status]}</span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              )
             case 'bookings':
               return <ComingSoon title="Bookings">Workshop bookings for this customer: date, status, vehicle and service.</ComingSoon>
             case 'invoices':

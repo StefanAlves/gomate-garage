@@ -113,9 +113,9 @@ main { max-width: 1120px; }
 .badge.muted { color: var(--muted); }
 .status-preparation { --status: #c26a00; }
 .status-ready { --status: #128c4a; }
-.status-out { --status: #1d5fbf; }
-.status-sold { --status: #0f7a5c; }
-.status-returned { --status: #6b7280; }
+.status-rented { --status: #1d5fbf; }
+.status-under_finance { --status: #7a3fc2; }
+.status-sold { --status: #6b7280; }
 .badge[class*='status-'] { color: var(--status); }
 
 .form-section { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .75rem; min-width: 0; }
@@ -164,8 +164,8 @@ main { max-width: 1120px; }
 .board-card { display: flex; flex-direction: column; gap: .35rem; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: var(--radii-md); background: var(--bg); color: var(--text); }
 .board-card:hover { text-decoration: none; border-color: var(--accent); }
 
-.badge.offer-rent { color: #1d5fbf; }
-.badge.offer-sale { color: #7a3fc2; }
+.badge.purpose-rental { color: #1d5fbf; }
+.badge.purpose-sale { color: #7a3fc2; }
 .badge.charge-not_paid { color: var(--urgent); }
 .badge.charge-transferred { color: #1d5fbf; }
 .badge.charge-business_paid, .badge.charge-paid_by_renter { color: #128c4a; }
