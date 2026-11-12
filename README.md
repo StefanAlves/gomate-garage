@@ -32,10 +32,12 @@ Structure modelled on the GoMate back office (customers and vehicles).
 
 ## Rules
 
-- A car is owned by one customer, or by the business when it has no owner (fleet / stock).
+Domain language lives in `GLOSSARY.md`. The business rents and sells its own cars only: see `docs/adr/0001-garage-owns-every-car.md`. The rules below describe the code as it is today. Rules marked *(changing)* are replaced by `SPECs/car-purpose-and-ownership.md`, `SPECs/rentals.md`, `SPECs/finance-sales.md` and `SPECs/maintenance.md`.
+
+- *(changing)* A car is owned by one customer, or by the business when it has no owner (fleet / stock).
 - Plates are stored in uppercase and must be unique. VINs, when given, must be 17 characters and unique.
 - A customer who still owns cars, or has fines, tolls or transactions, can't be deleted. The same goes for a car with fines, tolls or transactions.
-- Car status is the stock lifecycle: Preparation → Ready → Out (with a customer) → Sold / Returned. "For rent" and "For sale" are separate flags with their own prices.
+- *(changing)* Car status is the stock lifecycle: Preparation → Ready → Out (with a customer) → Sold / Returned. "For rent" and "For sale" are separate flags with their own prices.
 - Money is stored as integer cents. Ledger amounts are positive; the category gives the direction. P&L = rental + sale income − investment − expenses; ROI = P&L ÷ (investment + expenses). Bonds are tracked separately ("bond held") and never count as income.
 - Period filters use the garage's day in Australia/Melbourne; weeks start on Monday.
 - Build and compliance dates are typed as MM/YYYY and stored as YYYY-MM. Other dates are YYYY-MM-DD.

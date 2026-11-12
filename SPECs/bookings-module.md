@@ -1,6 +1,6 @@
 # Bookings Module
 
-Status: ready-for-agent
+Status: retired (2026-11-12). Don't build. The garage no longer works on customers' own cars (see docs/adr/0001-garage-owns-every-car.md). Rental Car servicing is covered by SPECs/maintenance.md.
 Date: 2026-11-08
 Related: README.md (Pages, Rules, Database migrations). Structure modelled on the GoMate back office (Customers → Bookings tab, Vehicles → Vehicle History tab).
 
