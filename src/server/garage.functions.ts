@@ -62,7 +62,7 @@ export const deleteCustomer = createServerFn({ method: 'POST' })
       if (isForeignKeyViolation(err))
         return {
           ok: false,
-          errors: { form: 'This customer still has rentals, fines, tolls or transactions. Reassign or delete those first.' },
+          errors: { form: 'This customer still has rentals, finance sales, fines, tolls or transactions. Reassign or delete those first.' },
         }
       throw err
     }
@@ -142,7 +142,7 @@ export const deleteCar = createServerFn({ method: 'POST' })
       return { ok: true, value: null }
     } catch (err) {
       if (isForeignKeyViolation(err))
-        return { ok: false, errors: { form: 'This car has rentals, fines, tolls or transactions recorded. Delete those first.' } }
+        return { ok: false, errors: { form: 'This car has rentals, finance sales, fines, tolls or transactions recorded. Delete those first.' } }
       throw err
     }
   })

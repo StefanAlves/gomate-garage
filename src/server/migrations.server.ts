@@ -317,6 +317,41 @@ export const migrations: string[] = [
 
   UPDATE charges SET status = 'paid_by_customer' WHERE status = 'paid_by_renter';
   `,
+
+  // 7: Finance Sales (SPECs/finance-sales.md). Deposit + n weekly Instalments
+  //    for a Sale car; the last Instalment absorbs rounding, so only the
+  //    regular amount is stored and the CHECK makes sure the parts add up.
+  //    n = 0 is a cash sale (Deposit = price). Payments are sale_income rows
+  //    carrying finance_sale_id.
+  `
+  CREATE TABLE finance_sales (
+    id               INTEGER PRIMARY KEY,
+    customer_id      INTEGER NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+    car_id           INTEGER NOT NULL REFERENCES cars(id) ON DELETE RESTRICT,
+    agreed_on        TEXT NOT NULL,      -- YYYY-MM-DD, Deposit due; Instalment k due 7k days later
+    price_cents      INTEGER NOT NULL CHECK (price_cents > 0),
+    deposit_cents    INTEGER NOT NULL CHECK (deposit_cents >= 0),
+    instalment_count INTEGER NOT NULL CHECK (instalment_count >= 0),
+    instalment_cents INTEGER NOT NULL CHECK (instalment_cents >= 0),
+    status           TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'defaulted')),
+    closed_on        TEXT,
+    default_reason   TEXT,
+    notes            TEXT,
+    created_at       TEXT NOT NULL DEFAULT (${now}),
+    updated_at       TEXT NOT NULL DEFAULT (${now}),
+    CHECK ((status = 'active') = (closed_on IS NULL)),
+    CHECK (
+      (instalment_count = 0 AND instalment_cents = 0 AND deposit_cents = price_cents) OR
+      (instalment_count > 0 AND instalment_cents > 0 AND deposit_cents < price_cents
+        AND price_cents - deposit_cents - (instalment_count - 1) * instalment_cents > 0)
+    )
+  );
+  CREATE UNIQUE INDEX finance_sales_active_car_idx ON finance_sales(car_id) WHERE status = 'active';
+  CREATE INDEX finance_sales_customer_idx ON finance_sales(customer_id);
+
+  ALTER TABLE transactions ADD COLUMN finance_sale_id INTEGER REFERENCES finance_sales(id) ON DELETE RESTRICT;
+  CREATE INDEX transactions_finance_sale_idx ON transactions(finance_sale_id);
+  `,
 ]
 
 /** Runs every migration after the database's user_version, up to `target` (default: all). */

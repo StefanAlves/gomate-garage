@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 import { db, likePattern } from './db.server'
-import type { AuState, ContactMethod, CustomerValues, customerListSearchSchema } from '~/lib/schemas'
+import { customerInputSchema } from '~/lib/schemas'
+import type { AuState, ContactMethod, CustomerValues, InlineCustomer, customerListSearchSchema } from '~/lib/schemas'
 import type { z } from 'zod'
 
 export interface Customer {
@@ -137,4 +138,15 @@ export function updateCustomer(id: number, v: CustomerValues) {
 
 export function deleteCustomer(id: number) {
   return db.prepare(`DELETE FROM customers WHERE id = ?`).run(id).changes > 0
+}
+
+/**
+ * The Customer picked on a Rental or Finance Sale form: the existing one, or a
+ * walk-in created from name and mobile. Null when the picked one is gone.
+ * Call inside the caller's transaction.
+ */
+export function resolveInlineCustomer(v: InlineCustomer): number | null {
+  if (v.customerMode === 'new')
+    return insertCustomer(customerInputSchema.parse({ firstName: v.firstName, lastName: v.lastName ?? '', phone: v.phone }))
+  return v.customerId != null && db.prepare('SELECT 1 FROM customers WHERE id = ?').get(v.customerId) ? v.customerId : null
 }

@@ -155,13 +155,22 @@ export function deleteCar(id: number) {
 }
 
 /** Compact list for vehicle pickers (fines, tolls, transactions). */
+/**
+ * Vehicle choices for the fine, toll and transaction forms. `holderId` is the
+ * Customer with the car right now (active Rental or Finance Sale), so a new
+ * fine can be passed on to them.
+ */
 export function carOptions() {
   return db
     .prepare(
-      `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name
+      `SELECT car.id, car.plate, (coalesce(car.year || ' ', '') || car.make || ' ' || car.model) AS name,
+         coalesce(
+           (SELECT r.customer_id FROM rentals r WHERE r.car_id = car.id AND r.status = 'active'),
+           (SELECT f.customer_id FROM finance_sales f WHERE f.car_id = car.id AND f.status = 'active')
+         ) AS holderId
        FROM cars car ORDER BY car.plate`,
     )
-    .all() as unknown as { id: number; plate: string; name: string }[]
+    .all() as unknown as { id: number; plate: string; name: string; holderId: number | null }[]
 }
 
 // ---- Stock -------------------------------------------------------------------

@@ -35,3 +35,16 @@ export function isForeignKeyViolation(err: unknown) {
 export function likePattern(q: string | undefined) {
   return q ? `%${q.replace(/[%_\\]/g, '\\$&')}%` : null
 }
+
+/** Runs `fn` in a transaction: committed if it returns, rolled back if it throws. */
+export function inTransaction<T>(fn: () => T): T {
+  db.exec('BEGIN')
+  try {
+    const out = fn()
+    db.exec('COMMIT')
+    return out
+  } catch (err) {
+    db.exec('ROLLBACK')
+    throw err
+  }
+}

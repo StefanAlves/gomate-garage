@@ -202,3 +202,12 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .deduction-row { display: grid; grid-template-columns: 8rem 1fr 8rem auto; gap: .5rem; align-items: end; }
 @media (max-width: 640px) { .deduction-row { grid-template-columns: 1fr 1fr; } }
 .contents { display: contents; }
+
+/* Finance sales */
+.badge.finance-active { color: #c26a00; }
+.badge.finance-completed { color: #128c4a; }
+.badge.finance-defaulted { color: var(--urgent); }
+.badge.inst-paid { color: #128c4a; }
+.badge.inst-part_paid { color: #1d5fbf; }
+.badge.inst-overdue { color: var(--urgent); }
+.badge.inst-upcoming { color: var(--muted); }

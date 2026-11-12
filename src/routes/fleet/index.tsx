@@ -16,7 +16,7 @@ export const Route = createFileRoute('/fleet/')({
 
 function Overview() {
   const { period } = Route.useSearch()
-  const { today, totals, statusCounts, unpaid, expiring } = Route.useLoaderData()
+  const { today, totals, statusCounts, unpaid, expiring, overdueFinance, rentalsBehind } = Route.useLoaderData()
   const fines = unpaid.find((u) => u.kind === 'fine')
   const tolls = unpaid.find((u) => u.kind === 'toll')
 
@@ -57,6 +57,20 @@ function Overview() {
             </span>
           ))}
         </div>
+      </section>
+
+      <section className="panel stack">
+        <h2>Customers behind on payments</h2>
+        <dl className="dl">
+          <dt><Link to="/fleet/rentals" search={{ show: 'behind' }}>Rentals</Link></dt>
+          <dd className={rentalsBehind.count ? 'urgent' : undefined}>
+            {rentalsBehind.count ? `${rentalsBehind.count} · ${formatMoneyShort(rentalsBehind.owedCents)} in arrears` : 'None'}
+          </dd>
+          <dt><Link to="/fleet/sales" search={{ show: 'overdue' }}>Finance sales</Link></dt>
+          <dd className={overdueFinance.count ? 'urgent' : undefined}>
+            {overdueFinance.count ? `${overdueFinance.count} overdue · ${formatMoneyShort(overdueFinance.arrearsCents)} in arrears` : 'None'}
+          </dd>
+        </dl>
       </section>
 
       <div className="two-col">

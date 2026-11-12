@@ -86,3 +86,18 @@ describe('migration 6: rentals', () => {
     expect(db.prepare('SELECT rental_id FROM transactions').all()).toEqual([])
   })
 })
+
+describe('migration 7: finance sales', () => {
+  it('only accepts deals whose parts add up', () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db, 7)
+    db.exec(`INSERT INTO customers (id, first_name, phone) VALUES (1, 'Ana', '0400000000');
+             INSERT INTO cars (id, purpose, plate, make, model) VALUES (1, 'sale', 'S1', 'Toyota', 'Corolla')`)
+    const insert = (deposit: number, n: number, each: number) =>
+      db.prepare(`INSERT INTO finance_sales (customer_id, car_id, agreed_on, price_cents, deposit_cents, instalment_count, instalment_cents)
+                  VALUES (1, 1, '2026-01-01', 10000, ?, ?, ?)`).run(deposit, n, each)
+    expect(() => insert(5000, 0, 0)).toThrow(/CHECK/)     // cash sale must be paid in full
+    expect(() => insert(1000, 3, 4500)).toThrow(/CHECK/)  // instalments overshoot the price
+    expect(() => insert(1000, 3, 3000)).not.toThrow()     // last instalment is 3000
+  })
+})

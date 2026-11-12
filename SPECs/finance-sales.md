@@ -1,6 +1,6 @@
 # Finance Sales
 
-Status: ready-for-agent
+Status: done (2026-11-12, branch `finance-sales`)
 Date: 2026-11-12
 Related: GLOSSARY.md, docs/adr/0001-garage-owns-every-car.md, SPECs/car-purpose-and-ownership.md (prerequisite). Shares the arrears calculation with SPECs/rentals.md.
 
@@ -98,6 +98,13 @@ The first Instalment is due one week after the agreement date.
   - a cash sale completes at creation;
   - Default moves the Car to Preparation and keeps the payments;
   - a second active Finance Sale on the same Car is rejected.
+
+## Implementation notes
+
+- Defaults taken (2026-11-12): a licence photo isn't required (the form warns). After a Default the sale takes no more payments; whether the Customer still owes the balance is open (see open-questions §2.1).
+- The Fleet overview shows overdue Finance Sales next to Rentals behind on payments.
+- Story 14: fines and tolls use the shared `paid_by_customer` status; picking a car in the fine / toll form fills in its current holder.
+- Payments edited or deleted on the Transactions page aren't re-checked against completion; record corrections as new payments instead.
 
 ## Out of Scope
 

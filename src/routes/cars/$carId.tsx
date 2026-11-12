@@ -9,6 +9,8 @@ import {
 import { deleteCar, getCar, updateCar } from '~/server/garage.functions'
 import { getCarFleetRecords, updateCarStock } from '~/server/fleet.functions'
 import { rentalsForCar } from '~/server/rentals.functions'
+import { financeSalesForCar } from '~/server/finance.functions'
+import { FinanceTable } from '~/components/finance-table'
 import { RentalTable } from '~/components/rental-table'
 import type { Charge } from '~/server/charges.server'
 import { CarForm } from '~/components/car-form'
@@ -24,23 +26,26 @@ export const Route = createFileRoute('/cars/$carId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.carId })
     if (!parsed.success) throw notFound()
-    const [car, records, rentals] = await Promise.all([
+    const [car, records, rentals, sales] = await Promise.all([
       getCar({ data: parsed.data }),
       getCarFleetRecords({ data: parsed.data }),
       rentalsForCar({ data: parsed.data }),
+      financeSalesForCar({ data: parsed.data }),
     ])
-    return { car, records, rentals }
+    return { car, records, rentals, sales }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.car.plate ?? 'Car'} · Garage` }] }),
   component: CarPage,
 })
 
 function CarPage() {
-  const { car, records, rentals } = Route.useLoaderData()
+  const { car, records, rentals, sales } = Route.useLoaderData()
   const { tab } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const isRental = car.purpose === 'rental'
   const activeRental = rentals.find((r) => r.status === 'active')
+  const currentSale = sales.find((f) => f.status === 'active') ?? sales.find((f) => f.status === 'completed')
+  const hidden: TabKey = isRental ? 'finance' : 'rentals'
 
   return (
     <div className="stack">
@@ -57,6 +62,15 @@ function CarPage() {
         {isRental && car.status === 'ready' && (
           <div><Link to="/rentals/new" search={{ car: car.id }} className="button">Start rental</Link></div>
         )}
+        {!isRental && car.status === 'ready' && (
+          <div><Link to="/finance-sales/new" search={{ car: car.id }} className="button">Start finance sale</Link></div>
+        )}
+        {currentSale && (
+          <p className="small">
+            {currentSale.status === 'active' ? 'Under finance to' : 'Sold to'} {currentSale.customerName} ·{' '}
+            <Link to="/finance-sales/$saleId" params={{ saleId: String(currentSale.id) }}>Open finance sale →</Link>
+          </p>
+        )}
         {activeRental && (
           <p className="small">
             Rented to {activeRental.customerName} since {formatDate(activeRental.startDate)} ·{' '}
@@ -69,12 +83,14 @@ function CarPage() {
       <MaintenanceSummary />
 
       <DetailTabs<TabKey>
-        selected={tab === 'rentals' && !isRental ? 'specs' : tab}
+        selected={tab === hidden ? 'specs' : tab}
         onChange={(t) => navigate({ search: { tab: t === 'specs' ? undefined : t }, replace: true })}
         tabs={[
           { id: 'specs', label: 'Specifications' },
           { id: 'stock', label: 'Stock' },
-          ...(isRental ? [{ id: 'rentals' as const, label: 'Rentals', count: rentals.length }] : []),
+          isRental
+            ? { id: 'rentals' as const, label: 'Rentals', count: rentals.length }
+            : { id: 'finance' as const, label: 'Finance', count: sales.length },
           { id: 'history', label: 'Vehicle history' },
           { id: 'fines', label: 'Fines', count: records.fines.length },
           { id: 'tolls', label: 'Tolls', count: records.tolls.length },
@@ -94,6 +110,13 @@ function CarPage() {
                 <section className="panel stack">
                   <h2>Rentals</h2>
                   {rentals.length === 0 ? <p className="muted">This car hasn't been rented yet.</p> : <RentalTable rentals={rentals} hide="car" />}
+                </section>
+              )
+            case 'finance':
+              return (
+                <section className="panel stack">
+                  <h2>Finance sales</h2>
+                  {sales.length === 0 ? <p className="muted">This car hasn't been sold yet.</p> : <FinanceTable sales={sales} hide="car" />}
                 </section>
               )
             case 'history':

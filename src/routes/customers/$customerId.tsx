@@ -5,6 +5,8 @@ import { customerTabSearchSchema, idSchema, type CUSTOMER_TABS } from '~/lib/sch
 import { customerName, formatDate, whatsappUrl } from '~/lib/format'
 import { deleteCustomer, getCustomer, updateCustomer } from '~/server/garage.functions'
 import { rentalsForCustomer } from '~/server/rentals.functions'
+import { financeSalesForCustomer } from '~/server/finance.functions'
+import { FinanceTable } from '~/components/finance-table'
 import { RentalTable } from '~/components/rental-table'
 import { CustomerForm } from '~/components/customer-form'
 import { CustomerDocuments } from '~/components/customer-documents'
@@ -19,8 +21,12 @@ export const Route = createFileRoute('/customers/$customerId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.customerId })
     if (!parsed.success) throw notFound()
-    const [found, rentals] = await Promise.all([getCustomer({ data: parsed.data }), rentalsForCustomer({ data: parsed.data })])
-    return { ...found, rentals }
+    const [found, rentals, sales] = await Promise.all([
+      getCustomer({ data: parsed.data }),
+      rentalsForCustomer({ data: parsed.data }),
+      financeSalesForCustomer({ data: parsed.data }),
+    ])
+    return { ...found, rentals, sales }
   },
   head: ({ loaderData }) => ({
     meta: [{ title: `${loaderData ? customerName(loaderData.customer) : 'Customer'} · Garage` }],
@@ -29,7 +35,7 @@ export const Route = createFileRoute('/customers/$customerId')({
 })
 
 function CustomerPage() {
-  const { customer, rentals } = Route.useLoaderData()
+  const { customer, rentals, sales } = Route.useLoaderData()
   const { tab } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const wa = whatsappUrl(customer.phone)
@@ -61,10 +67,11 @@ function CustomerPage() {
         onChange={(t) => navigate({ search: { tab: t === 'contact' ? undefined : t }, replace: true })}
         tabs={[
           { id: 'contact', label: 'Contact' },
+          { id: 'rentals', label: 'Rentals', count: rentals.length },
+          { id: 'finance', label: 'Finance sales', count: sales.length },
           { id: 'bookings', label: 'Bookings' },
           { id: 'invoices', label: 'Invoices' },
           { id: 'comms', label: 'Comms' },
-          { id: 'rentals', label: 'Rentals', count: rentals.length },
         ]}
         render={(key) => {
           switch (key) {
@@ -76,6 +83,16 @@ function CustomerPage() {
               return <ComingSoon title="Invoices">Invoices for this customer, filterable by Draft, Sent, Accepted, Declined, Paid and Overdue.</ComingSoon>
             case 'comms':
               return <ComingSoon title="Communications">Emails, SMS and WhatsApp messages sent to this customer.</ComingSoon>
+            case 'finance':
+              return (
+                <section className="panel stack">
+                  <div className="row between wrap">
+                    <h2>Finance sales</h2>
+                    <Link to="/finance-sales/new" search={{ customer: customer.id }} className="button ghost">Start finance sale</Link>
+                  </div>
+                  {sales.length === 0 ? <p className="muted">No finance sales yet.</p> : <FinanceTable sales={sales} hide="customer" />}
+                </section>
+              )
             case 'rentals':
               return (
                 <section className="panel stack">

@@ -17,11 +17,14 @@ import { Route as CarsNewRouteImport } from './routes/cars/new'
 import { Route as CustomersIndexRouteImport } from './routes/customers/index'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
 import { Route as CustomersNewRouteImport } from './routes/customers/new'
+import { Route as FinanceSalesSaleIdRouteImport } from './routes/finance-sales/$saleId'
+import { Route as FinanceSalesNewRouteImport } from './routes/finance-sales/new'
 import { Route as FleetIndexRouteImport } from './routes/fleet/index'
 import { Route as FleetFinesRouteImport } from './routes/fleet/fines'
 import { Route as FleetInvoicesRouteImport } from './routes/fleet/invoices'
 import { Route as FleetLeadsRouteImport } from './routes/fleet/leads'
 import { Route as FleetRentalsRouteImport } from './routes/fleet/rentals'
+import { Route as FleetSalesRouteImport } from './routes/fleet/sales'
 import { Route as FleetStockRouteImport } from './routes/fleet/stock'
 import { Route as FleetTollsRouteImport } from './routes/fleet/tolls'
 import { Route as FleetTransactionsRouteImport } from './routes/fleet/transactions'
@@ -69,6 +72,16 @@ const CustomersNewRoute = CustomersNewRouteImport.update({
   path: '/customers/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FinanceSalesSaleIdRoute = FinanceSalesSaleIdRouteImport.update({
+  id: '/finance-sales/$saleId',
+  path: '/finance-sales/$saleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceSalesNewRoute = FinanceSalesNewRouteImport.update({
+  id: '/finance-sales/new',
+  path: '/finance-sales/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FleetIndexRoute = FleetIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -92,6 +105,11 @@ const FleetLeadsRoute = FleetLeadsRouteImport.update({
 const FleetRentalsRoute = FleetRentalsRouteImport.update({
   id: '/rentals',
   path: '/rentals',
+  getParentRoute: () => FleetRouteRoute,
+} as any)
+const FleetSalesRoute = FleetSalesRouteImport.update({
+  id: '/sales',
+  path: '/sales',
   getParentRoute: () => FleetRouteRoute,
 } as any)
 const FleetStockRoute = FleetStockRouteImport.update({
@@ -132,10 +150,13 @@ export interface FileRoutesByFullPath {
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/customers/new': typeof CustomersNewRoute
+  '/finance-sales/$saleId': typeof FinanceSalesSaleIdRoute
+  '/finance-sales/new': typeof FinanceSalesNewRoute
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
   '/fleet/rentals': typeof FleetRentalsRoute
+  '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
@@ -152,10 +173,13 @@ export interface FileRoutesByTo {
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/customers/new': typeof CustomersNewRoute
+  '/finance-sales/$saleId': typeof FinanceSalesSaleIdRoute
+  '/finance-sales/new': typeof FinanceSalesNewRoute
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
   '/fleet/rentals': typeof FleetRentalsRoute
+  '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
@@ -174,10 +198,13 @@ export interface FileRoutesById {
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
   '/customers/new': typeof CustomersNewRoute
+  '/finance-sales/$saleId': typeof FinanceSalesSaleIdRoute
+  '/finance-sales/new': typeof FinanceSalesNewRoute
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
   '/fleet/rentals': typeof FleetRentalsRoute
+  '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
   '/fleet/tolls': typeof FleetTollsRoute
   '/fleet/transactions': typeof FleetTransactionsRoute
@@ -197,10 +224,13 @@ export interface FileRouteTypes {
     | '/cars/new'
     | '/customers/$customerId'
     | '/customers/new'
+    | '/finance-sales/$saleId'
+    | '/finance-sales/new'
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
     | '/fleet/rentals'
+    | '/fleet/sales'
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
@@ -217,10 +247,13 @@ export interface FileRouteTypes {
     | '/cars/new'
     | '/customers/$customerId'
     | '/customers/new'
+    | '/finance-sales/$saleId'
+    | '/finance-sales/new'
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
     | '/fleet/rentals'
+    | '/fleet/sales'
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
@@ -238,10 +271,13 @@ export interface FileRouteTypes {
     | '/cars/new'
     | '/customers/$customerId'
     | '/customers/new'
+    | '/finance-sales/$saleId'
+    | '/finance-sales/new'
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
     | '/fleet/rentals'
+    | '/fleet/sales'
     | '/fleet/stock'
     | '/fleet/tolls'
     | '/fleet/transactions'
@@ -260,6 +296,8 @@ export interface RootRouteChildren {
   CarsNewRoute: typeof CarsNewRoute
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRoute
   CustomersNewRoute: typeof CustomersNewRoute
+  FinanceSalesSaleIdRoute: typeof FinanceSalesSaleIdRoute
+  FinanceSalesNewRoute: typeof FinanceSalesNewRoute
   RentalsRentalIdRoute: typeof RentalsRentalIdRoute
   RentalsNewRoute: typeof RentalsNewRoute
   CarsIndexRoute: typeof CarsIndexRoute
@@ -325,6 +363,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/finance-sales/$saleId': {
+      id: '/finance-sales/$saleId'
+      path: '/finance-sales/$saleId'
+      fullPath: '/finance-sales/$saleId'
+      preLoaderRoute: typeof FinanceSalesSaleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance-sales/new': {
+      id: '/finance-sales/new'
+      path: '/finance-sales/new'
+      fullPath: '/finance-sales/new'
+      preLoaderRoute: typeof FinanceSalesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/fleet/': {
       id: '/fleet/'
       path: '/'
@@ -358,6 +410,13 @@ declare module '@tanstack/react-router' {
       path: '/rentals'
       fullPath: '/fleet/rentals'
       preLoaderRoute: typeof FleetRentalsRouteImport
+      parentRoute: typeof FleetRouteRoute
+    }
+    '/fleet/sales': {
+      id: '/fleet/sales'
+      path: '/sales'
+      fullPath: '/fleet/sales'
+      preLoaderRoute: typeof FleetSalesRouteImport
       parentRoute: typeof FleetRouteRoute
     }
     '/fleet/stock': {
@@ -410,6 +469,7 @@ interface FleetRouteRouteChildren {
   FleetInvoicesRoute: typeof FleetInvoicesRoute
   FleetLeadsRoute: typeof FleetLeadsRoute
   FleetRentalsRoute: typeof FleetRentalsRoute
+  FleetSalesRoute: typeof FleetSalesRoute
   FleetStockRoute: typeof FleetStockRoute
   FleetTollsRoute: typeof FleetTollsRoute
   FleetTransactionsRoute: typeof FleetTransactionsRoute
@@ -421,6 +481,7 @@ const FleetRouteRouteChildren: FleetRouteRouteChildren = {
   FleetInvoicesRoute: FleetInvoicesRoute,
   FleetLeadsRoute: FleetLeadsRoute,
   FleetRentalsRoute: FleetRentalsRoute,
+  FleetSalesRoute: FleetSalesRoute,
   FleetStockRoute: FleetStockRoute,
   FleetTollsRoute: FleetTollsRoute,
   FleetTransactionsRoute: FleetTransactionsRoute,
@@ -438,6 +499,8 @@ const rootRouteChildren: RootRouteChildren = {
   CarsNewRoute: CarsNewRoute,
   CustomersCustomerIdRoute: CustomersCustomerIdRoute,
   CustomersNewRoute: CustomersNewRoute,
+  FinanceSalesSaleIdRoute: FinanceSalesSaleIdRoute,
+  FinanceSalesNewRoute: FinanceSalesNewRoute,
   RentalsRentalIdRoute: RentalsRentalIdRoute,
   RentalsNewRoute: RentalsNewRoute,
   CarsIndexRoute: CarsIndexRoute,

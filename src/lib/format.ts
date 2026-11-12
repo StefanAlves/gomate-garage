@@ -1,6 +1,6 @@
 import type {
   CarFeature, CarPurpose, CarStatus, ChargeStatus, ContactMethod, DeductionKind, DocumentKind, FuelType, PaymentMethod,
-  RentalStatus, TransactionCategory,
+  FinanceStatus, RentalStatus, TransactionCategory,
 } from './schemas'
 
 // Fixed locale + UTC so server and client render identical text (no hydration mismatch).
@@ -130,4 +130,10 @@ export const deductionKindLabel: Record<DeductionKind, string> = {
   toll: 'Toll',
   damage: 'Damage',
   other: 'Other',
+}
+
+export const financeStatusLabel: Record<FinanceStatus, string> = {
+  active: 'Active',
+  completed: 'Completed',
+  defaulted: 'Defaulted',
 }

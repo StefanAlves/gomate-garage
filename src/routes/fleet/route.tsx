@@ -8,6 +8,7 @@ const links = [
   { to: '/fleet', label: 'Overview', exact: true },
   { to: '/fleet/stock', label: 'Stock' },
   { to: '/fleet/rentals', label: 'Rentals' },
+  { to: '/fleet/sales', label: 'Finance sales' },
   { to: '/fleet/fines', label: 'Fines' },
   { to: '/fleet/tolls', label: 'Tolls' },
   { to: '/fleet/leads', label: 'Leads' },

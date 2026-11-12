@@ -1,13 +1,12 @@
 import '@tanstack/react-start/server-only'
 import type { z } from 'zod'
-import { customerInputSchema } from '~/lib/schemas'
 import type {
   ChargeKind, DeductionKind, PaymentMethod, RentChangeValues, RentPaymentValues, RentalStatus, ReturnRentalValues,
   StartRentalValues, rentalListSearchSchema,
 } from '~/lib/schemas'
 import { nextDueDate, rateOn, rentDue, settle, weeksBehind, type RentRate } from '~/lib/rent'
-import { db, likePattern, sqlNow, toCents } from './db.server'
-import { insertCustomer } from './customers.server'
+import { db, inTransaction, likePattern, sqlNow, toCents } from './db.server'
+import { resolveInlineCustomer } from './customers.server'
 
 // Rentals (SPECs/rentals.md). A Rental is open-ended: Bond at the start, then
 // weekly Rent in advance until the Return. Money lives in the transactions
@@ -88,18 +87,6 @@ const columns = `r.id, r.customer_id AS customerId, (c.first_name || coalesce(' 
   r.start_date AS startDate, r.bond_cents AS bondCents, r.status, r.returned_on AS returnedOn,
   r.return_reason AS returnReason, r.notes, r.created_at AS createdAt, r.updated_at AS updatedAt`
 const from = `FROM rentals r JOIN customers c ON c.id = r.customer_id JOIN cars car ON car.id = r.car_id`
-
-function inTransaction<T>(fn: () => T): T {
-  db.exec('BEGIN')
-  try {
-    const out = fn()
-    db.exec('COMMIT')
-    return out
-  } catch (err) {
-    db.exec('ROLLBACK')
-    throw err
-  }
-}
 
 // ---- Summaries ---------------------------------------------------------------
 
@@ -270,13 +257,8 @@ export function startRental(v: StartRentalValues): StartOutcome {
       | { purpose: string; status: string } | undefined
     if (!car || car.purpose !== 'rental' || car.status !== 'ready') return { ok: false, reason: 'car_not_available' }
 
-    let customerId: number
-    if (v.customerMode === 'new') {
-      customerId = insertCustomer(customerInputSchema.parse({ firstName: v.firstName, lastName: v.lastName ?? '', phone: v.phone }))
-    } else {
-      if (!db.prepare('SELECT 1 FROM customers WHERE id = ?').get(v.customerId)) return { ok: false, reason: 'customer_not_found' }
-      customerId = v.customerId!
-    }
+    const customerId = resolveInlineCustomer(v)
+    if (customerId == null) return { ok: false, reason: 'customer_not_found' }
 
     const bondCents = toCents(v.bond) ?? 0
     const id = Number(

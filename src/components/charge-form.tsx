@@ -4,14 +4,14 @@ import type { Charge } from '~/server/charges.server'
 import { FormError, useSchemaForm, type Result } from './form'
 
 export type PickerOptions = {
-  cars: { id: number; plate: string; name: string }[]
+  cars: { id: number; plate: string; name: string; holderId: number | null }[]
   customers: { id: number; name: string; phone: string }[]
 }
 
 const statusOptions = labelOptions(chargeStatusLabel)
 const idStr = (id: number | null | undefined) => (id == null ? '' : String(id))
 
-/** Add / edit a fine or toll. Picking a customer-owned car fills in that customer. */
+/** Add / edit a fine or toll. Picking a car that is rented or under finance fills in that customer. */
 export function ChargeForm({
   kind,
   options,
@@ -55,7 +55,15 @@ export function ChargeForm({
     <form className="form form-grid" onSubmit={handle} noValidate>
       <form.AppField name="incurredOn">{(f) => <f.TextField label={fine ? 'Offence date' : 'Travel date'} type="date" required />}</form.AppField>
       <form.AppField name="dueOn">{(f) => <f.TextField label="Due date" type="date" />}</form.AppField>
-      <form.AppField name="carId">
+      <form.AppField
+        name="carId"
+        listeners={{
+          onChange: ({ value }) => {
+            const holder = options.cars.find((c) => String(c.id) === value)?.holderId
+            if (holder != null && !form.getFieldValue('customerId')) form.setFieldValue('customerId', String(holder))
+          },
+        }}
+      >
         {(f) => <f.SelectField label="Vehicle (rego)" options={carOptions} emptyLabel="Unknown vehicle" />}
       </form.AppField>
       <form.AppField name="customerId">{(f) => <f.SelectField label="Customer" options={customerOptions} emptyLabel="Unknown" />}</form.AppField>

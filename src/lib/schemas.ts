@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { financePlan } from './finance'
 
 // Shared, isomorphic schemas: used for form validation in the browser,
 // search-param validation on routes, and input validation in server functions.
@@ -43,6 +44,7 @@ export const PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'other'] as con
 export const PERIODS = ['today', 'week', 'month', '30d', 'year', 'all'] as const
 export const DOCUMENT_KINDS = ['licence_front', 'licence_back', 'passport'] as const
 export const RENTAL_STATUSES = ['active', 'returned'] as const
+export const FINANCE_STATUSES = ['active', 'completed', 'defaulted'] as const
 export const DEDUCTION_KINDS = ['rent_arrears', 'fine', 'toll', 'damage', 'other'] as const
 /** Deductions staff type in at Return; the others come from Arrears and linked fines / tolls. */
 export const MANUAL_DEDUCTION_KINDS = ['damage', 'other'] as const
@@ -55,6 +57,7 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 export type Period = (typeof PERIODS)[number]
 export type DocumentKind = (typeof DOCUMENT_KINDS)[number]
 export type RentalStatus = (typeof RENTAL_STATUSES)[number]
+export type FinanceStatus = (typeof FINANCE_STATUSES)[number]
 export type DeductionKind = (typeof DEDUCTION_KINDS)[number]
 
 // ---- Field helpers -----------------------------------------------------------
@@ -257,22 +260,19 @@ const requiredMoney = (message: string) =>
 const phonePattern = /^[+\d][\d\s()-]*$/
 
 /**
- * Starting a Rental. The Customer is either picked (`customerId`) or created
- * on the spot from a name and mobile, so a walk-in is one form.
+ * Picking the Customer for a Rental or Finance Sale: either an existing one
+ * (`customerId`) or a walk-in created on the spot from a name and mobile.
  */
-export const startRentalInputSchema = z.object({
-  carId: z.coerce.number('Choose a car').int().positive('Choose a car'),
+const inlineCustomerFields = {
   customerMode: z.enum(['existing', 'new']).default('existing'),
   customerId: optionalId,
   firstName: optionalText(60),
   lastName: optionalText(60),
   phone: optionalText(30),
-  startDate: z.iso.date('Start date is required'),
-  weeklyRent: requiredMoney('Enter the weekly rent'),
-  bond: optionalMoney.transform((v) => v ?? 0),
-  bondMethod: optionalEnum(PAYMENT_METHODS),
-  notes: optionalText(2000),
-}).superRefine((v, ctx) => {
+}
+export type InlineCustomer = { customerMode: 'existing' | 'new'; customerId: number | null; firstName: string | null; lastName: string | null; phone: string | null }
+
+function checkInlineCustomer(v: InlineCustomer, ctx: z.RefinementCtx) {
   if (v.customerMode === 'existing') {
     if (v.customerId == null) ctx.addIssue({ code: 'custom', path: ['customerId'], message: 'Choose a customer' })
     return
@@ -280,7 +280,17 @@ export const startRentalInputSchema = z.object({
   if (!v.firstName) ctx.addIssue({ code: 'custom', path: ['firstName'], message: 'First name is required' })
   if (!v.phone || v.phone.length < 6) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Mobile is required' })
   else if (!phonePattern.test(v.phone)) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Invalid phone number' })
-})
+}
+
+export const startRentalInputSchema = z.object({
+  carId: z.coerce.number('Choose a car').int().positive('Choose a car'),
+  ...inlineCustomerFields,
+  startDate: z.iso.date('Start date is required'),
+  weeklyRent: requiredMoney('Enter the weekly rent'),
+  bond: optionalMoney.transform((v) => v ?? 0),
+  bondMethod: optionalEnum(PAYMENT_METHODS),
+  notes: optionalText(2000),
+}).superRefine(checkInlineCustomer)
 export type StartRentalValues = z.output<typeof startRentalInputSchema>
 
 export const rentPaymentInputSchema = z.object({
@@ -314,6 +324,50 @@ export const returnRentalInputSchema = z.object({
 export type ReturnRentalValues = z.output<typeof returnRentalInputSchema>
 export const returnRentalSchema = idSchema.extend({ values: returnRentalInputSchema })
 export const settlementPreviewSchema = idSchema.extend({ returnedOn: z.iso.date() })
+
+// ---- Finance Sales -----------------------------------------------------------------
+
+const cents = (dollars: number) => Math.round(dollars * 100)
+const planErrors = {
+  deposit_over_price: ['deposit', 'The deposit is more than the price'],
+  cash_sale_needs_full_deposit: ['deposit', 'With no instalments (a cash sale) the deposit must be the full price'],
+  nothing_to_pay: ['instalmentCount', 'The deposit covers the price; set instalments to 0 for a cash sale'],
+  instalments_too_large: ['instalmentAmount', 'These instalments add up to more than the price'],
+} as const
+
+/**
+ * Starting a Finance Sale. `instalmentAmount` empty = split evenly; the last
+ * Instalment absorbs rounding either way (see lib/finance.ts).
+ */
+export const startFinanceSaleInputSchema = z.object({
+  carId: z.coerce.number('Choose a car').int().positive('Choose a car'),
+  ...inlineCustomerFields,
+  agreedOn: z.iso.date('Agreement date is required'),
+  price: requiredMoney('Enter the sale price'),
+  deposit: optionalMoney.transform((v) => v ?? 0),
+  depositMethod: optionalEnum(PAYMENT_METHODS),
+  instalmentCount: z.coerce.number('Enter the number of instalments').int('Whole weeks only').min(0, 'Must be 0 or more').max(520, 'At most 520 weeks'),
+  instalmentAmount: optionalMoney,
+  notes: optionalText(2000),
+}).superRefine((v, ctx) => {
+  checkInlineCustomer(v, ctx)
+  const out = financePlan(cents(v.price), cents(v.deposit), v.instalmentCount, v.instalmentAmount == null ? null : cents(v.instalmentAmount))
+  if (!out.ok) {
+    const [path, message] = planErrors[out.error]
+    ctx.addIssue({ code: 'custom', path: [path], message })
+  }
+})
+export type StartFinanceSaleValues = z.output<typeof startFinanceSaleInputSchema>
+
+export const financePaymentInputSchema = rentPaymentInputSchema
+export const recordFinancePaymentSchema = idSchema.extend({ values: financePaymentInputSchema })
+
+export const defaultFinanceSaleInputSchema = z.object({
+  defaultedOn: z.iso.date('Date is required'),
+  reason: z.string().trim().min(1, 'Give a reason').max(500),
+})
+export type DefaultFinanceSaleValues = z.output<typeof defaultFinanceSaleInputSchema>
+export const defaultFinanceSaleSchema = idSchema.extend({ values: defaultFinanceSaleInputSchema })
 
 // ---- List search params --------------------------------------------------------
 
@@ -378,6 +432,14 @@ export const rentalListSearchSchema = z.object({
 })
 export const rentalListSearchDefaults = rentalListSearchSchema.parse({})
 
+export const financeListSearchSchema = z.object({
+  q: z.string().trim().max(100).optional().catch(undefined),
+  status: z.enum([...FINANCE_STATUSES, 'all']).default('active').catch('active'),
+  show: z.enum(['all', 'overdue']).default('all').catch('all'),
+  sort: z.enum(RENTAL_SORTS).default('arrears').catch('arrears'),
+})
+export const financeListSearchDefaults = financeListSearchSchema.parse({})
+
 export const newRentalSearchSchema = z.object({
   car: z.coerce.number().int().positive().optional().catch(undefined),
   customer: z.coerce.number().int().positive().optional().catch(undefined),
@@ -387,10 +449,10 @@ export const overviewSearchSchema = z.object({ period: periodParam })
 
 // ---- Detail page tabs ----------------------------------------------------------
 
-export const CUSTOMER_TABS = ['contact', 'bookings', 'invoices', 'comms', 'rentals'] as const
+export const CUSTOMER_TABS = ['contact', 'rentals', 'finance', 'bookings', 'invoices', 'comms'] as const
 export const customerTabSearchSchema = z.object({ tab: z.enum(CUSTOMER_TABS).default('contact').catch('contact') })
 
-export const CAR_TABS = ['specs', 'stock', 'rentals', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
+export const CAR_TABS = ['specs', 'stock', 'rentals', 'finance', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
 export const carTabSearchSchema = z.object({ tab: z.enum(CAR_TABS).default('specs').catch('specs') })
 
 /** Turn a ZodError into { field: message } for forms. */
