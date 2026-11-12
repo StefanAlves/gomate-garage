@@ -8,23 +8,28 @@ import {
 import { adjustRent, getRental, recordRentPayment } from '~/server/rentals.functions'
 import { OwedCell, RentalStatusBadge } from '~/components/rental-table'
 import { ReturnRental } from '~/components/return-rental'
+import { getMaintenance } from '~/server/maintenance.functions'
+import { DueDate, DueKm, MaintenanceBadge, OdometerValue, ReadingForm } from '~/components/maintenance'
 import { FormError, useSchemaForm } from '~/components/form'
 
 export const Route = createFileRoute('/rentals/$rentalId')({
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.rentalId })
     if (!parsed.success) throw notFound()
-    return getRental({ data: parsed.data })
+    const found = await getRental({ data: parsed.data })
+    const maintenance = await getMaintenance({ data: { id: found.rental.carId } })
+    return { ...found, maintenance }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `Rental · ${loaderData?.rental.carPlate ?? ''} · Garage` }] }),
   component: RentalPage,
 })
 
-type Panel = 'payment' | 'rent' | 'return' | null
+type Panel = 'payment' | 'rent' | 'return' | 'reading' | null
 const methodOptions = labelOptions(methodLabel)
 
 function RentalPage() {
-  const { rental, rates, payments, deductions, today } = Route.useLoaderData()
+  const { rental, rates, payments, deductions, today, maintenance } = Route.useLoaderData()
+  const { due } = maintenance
   const router = useRouter()
   const [panel, setPanel] = useState<Panel>(null)
   const [notice, setNotice] = useState<string>()
@@ -79,8 +84,29 @@ function RentalPage() {
           <button type="button" onClick={() => setPanel('payment')}>Record payment</button>
         )}
         {active && <button type="button" className="ghost" onClick={() => setPanel('rent')}>Change rent</button>}
+        {active && <button type="button" className="ghost" onClick={() => setPanel('reading')}>Add odometer reading</button>}
         {active && <button type="button" className="ghost" onClick={() => setPanel('return')}>Return car</button>}
       </div>
+
+      {active && (
+        <p className="small row wrap">
+          <span>Odometer <OdometerValue due={due} /></span>
+          {due.state === 'no_interval' ? (
+            <Link to="/cars/$carId" params={{ carId: String(rental.carId) }} search={{ tab: 'maintenance' }}>Set a service interval</Link>
+          ) : (
+            <>
+              <span>· Next service <DueDate due={due} /> or <DueKm due={due} /></span>
+              <MaintenanceBadge state={due.state} />
+            </>
+          )}
+        </p>
+      )}
+      {panel === 'reading' && (
+        <section className="panel stack">
+          <h2>Add odometer reading</h2>
+          <ReadingForm carId={rental.carId} today={today} onDone={done('Reading saved.')} onCancel={() => setPanel(null)} />
+        </section>
+      )}
 
       {panel === 'payment' && (
         <section className="panel stack">

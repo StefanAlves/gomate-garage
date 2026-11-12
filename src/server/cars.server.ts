@@ -1,5 +1,6 @@
 import '@tanstack/react-start/server-only'
-import { db, likePattern, sqlNow, toCents } from './db.server'
+import { db, inTransaction, likePattern, sqlNow, toCents } from './db.server'
+import { garageToday } from '~/lib/period'
 import { totalsColumns, withPnl, type Totals } from './transactions.server'
 import type { SQLInputValue } from 'node:sqlite'
 import { MANUAL_CAR_STATUSES } from '~/lib/schemas'
@@ -134,18 +135,36 @@ const values = `:plate, :make, :model, :variant, :year, :color, :vin, :engineNum
   :nextServiceDate, :nextServiceKm, :nextTransmissionDate, :nextTransmissionKm, :regoExpiry,
   :insuranceProvider, :insurancePolicy, :insuranceExpiry, :ppsrChecked, :writtenOff, :notes`
 
+/**
+ * Adds a car. A Rental car's odometer goes in as its first reading, and its
+ * next service is worked out from its interval rather than typed in.
+ */
 export function insertCar(v: NewCarValues) {
-  const { lastInsertRowid } = db
-    .prepare(`INSERT INTO cars (purpose, status, ${fields}) VALUES (:purpose, :status, ${values})`)
-    .run(toParams(v))
-  return Number(lastInsertRowid)
+  const params = v.purpose === 'rental' ? { ...v, nextServiceDate: null, nextServiceKm: null } : v
+  return inTransaction(() => {
+    const id = Number(
+      db.prepare(`INSERT INTO cars (purpose, status, ${fields}) VALUES (:purpose, :status, ${values})`).run(toParams(params))
+        .lastInsertRowid,
+    )
+    if (v.purpose === 'rental' && v.mileageKm != null)
+      db.prepare(`INSERT INTO odometer_readings (car_id, read_on, km, note) VALUES (?, ?, ?, 'When the car was added')`)
+        .run(id, garageToday(), v.mileageKm)
+    return id
+  })
 }
+
+/** Same as `values`, except Rental cars keep their odometer and next service: Maintenance owns those. */
+const updateValues = `:plate, :make, :model, :variant, :year, :color, :vin, :engineNumber, :buildDate,
+  :complianceDate, :engineType, :cylinders, :fuelType, :transmission, :bodyStyle, :radioPin,
+  CASE purpose WHEN 'rental' THEN mileage_km ELSE :mileageKm END,
+  CASE purpose WHEN 'rental' THEN next_service_date ELSE :nextServiceDate END,
+  CASE purpose WHEN 'rental' THEN next_service_km ELSE :nextServiceKm END,
+  :nextTransmissionDate, :nextTransmissionKm, :regoExpiry,
+  :insuranceProvider, :insurancePolicy, :insuranceExpiry, :ppsrChecked, :writtenOff, :notes`
 
 export function updateCar(id: number, v: CarValues) {
   const { changes } = db
-    .prepare(
-      `UPDATE cars SET (${fields}, updated_at) = (${values}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = :id`,
-    )
+    .prepare(`UPDATE cars SET (${fields}, updated_at) = (${updateValues}, ${sqlNow}) WHERE id = :id`)
     .run({ ...toParams(v), id })
   return changes > 0
 }
@@ -154,7 +173,6 @@ export function deleteCar(id: number) {
   return db.prepare(`DELETE FROM cars WHERE id = ?`).run(id).changes > 0
 }
 
-/** Compact list for vehicle pickers (fines, tolls, transactions). */
 /**
  * Vehicle choices for the fine, toll and transaction forms. `holderId` is the
  * Customer with the car right now (active Rental or Finance Sale), so a new
@@ -191,7 +209,7 @@ export function updateCarStock(id: number, v: CarStockValues): 'ok' | 'not_found
        weekly_rate_cents  = CASE purpose WHEN 'rental' THEN :weeklyRate  ELSE weekly_rate_cents  END,
        asking_price_cents = CASE purpose WHEN 'sale'   THEN :askingPrice ELSE asking_price_cents END,
        min_price_cents    = CASE purpose WHEN 'sale'   THEN :minPrice    ELSE min_price_cents    END,
-       mileage_km = :mileageKm, listing_description = :listingDescription, features = :features,
+       mileage_km = CASE purpose WHEN 'rental' THEN mileage_km ELSE :mileageKm END, listing_description = :listingDescription, features = :features,
        updated_at = ${sqlNow}
      WHERE id = :id`,
   ).run({

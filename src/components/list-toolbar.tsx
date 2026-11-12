@@ -5,7 +5,7 @@ import { PAGE_SIZES } from '~/lib/schemas'
 // The URL is the state for every list control: search, sort, filters, page.
 // Changing anything except the page resets to page 1.
 
-type ListRoute = '/customers/' | '/cars/' | '/fleet/' | '/fleet/stock' | '/fleet/rentals' | '/fleet/sales' | '/fleet/fines' | '/fleet/tolls' | '/fleet/transactions'
+type ListRoute = '/customers/' | '/cars/' | '/fleet/' | '/fleet/stock' | '/fleet/rentals' | '/fleet/sales' | '/fleet/maintenance' | '/fleet/fines' | '/fleet/tolls' | '/fleet/transactions'
 type Params = Record<string, unknown>
 
 export function useSetSearch(from: ListRoute) {

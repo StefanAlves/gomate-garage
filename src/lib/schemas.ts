@@ -440,6 +440,46 @@ export const financeListSearchSchema = z.object({
 })
 export const financeListSearchDefaults = financeListSearchSchema.parse({})
 
+// ---- Maintenance (Rental cars) ---------------------------------------------------
+
+const requiredKm = optionalInt(0, 5_000_000).refine((v) => v != null, 'Enter the odometer (km)').transform((v) => v!)
+
+/** Every N km and every M months, whichever comes first; either may be left blank. */
+export const serviceIntervalInputSchema = z.object({
+  km: optionalInt(500, 200_000),
+  months: optionalInt(1, 60),
+})
+export type ServiceIntervalValues = z.output<typeof serviceIntervalInputSchema>
+export const setServiceIntervalSchema = idSchema.extend({ values: serviceIntervalInputSchema })
+
+export const odometerReadingInputSchema = z.object({
+  readOn: z.iso.date('Date is required'),
+  km: requiredKm,
+  note: optionalText(200),
+  /** Staff confirm a reading that's out of order with the history (a typo fix or a replaced odometer). */
+  correction: checkbox,
+})
+export type OdometerReadingValues = z.output<typeof odometerReadingInputSchema>
+/** `id` is the car. */
+export const recordReadingSchema = idSchema.extend({ values: odometerReadingInputSchema })
+
+export const serviceInputSchema = z.object({
+  servicedOn: z.iso.date('Date is required'),
+  km: requiredKm,
+  description: z.string().trim().min(1, 'Say what was done').max(500),
+  cost: optionalMoney.transform((v) => v ?? 0),
+  method: optionalEnum(PAYMENT_METHODS),
+  correction: checkbox,
+})
+export type ServiceValues = z.output<typeof serviceInputSchema>
+/** `id` is the car. */
+export const recordServiceSchema = idSchema.extend({ values: serviceInputSchema })
+
+export const maintenanceListSearchSchema = z.object({
+  show: z.enum(['due', 'all']).default('due').catch('due'),
+})
+export const maintenanceListSearchDefaults = maintenanceListSearchSchema.parse({})
+
 export const newRentalSearchSchema = z.object({
   car: z.coerce.number().int().positive().optional().catch(undefined),
   customer: z.coerce.number().int().positive().optional().catch(undefined),
@@ -452,7 +492,7 @@ export const overviewSearchSchema = z.object({ period: periodParam })
 export const CUSTOMER_TABS = ['contact', 'rentals', 'finance', 'bookings', 'invoices', 'comms'] as const
 export const customerTabSearchSchema = z.object({ tab: z.enum(CUSTOMER_TABS).default('contact').catch('contact') })
 
-export const CAR_TABS = ['specs', 'stock', 'rentals', 'finance', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
+export const CAR_TABS = ['specs', 'stock', 'rentals', 'finance', 'maintenance', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
 export const carTabSearchSchema = z.object({ tab: z.enum(CAR_TABS).default('specs').catch('specs') })
 
 /** Turn a ZodError into { field: message } for forms. */

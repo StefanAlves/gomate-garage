@@ -12,7 +12,7 @@ Decided while writing the specs. The business accepted them on 2026-11-12 so bui
 1. **Payments live in the money ledger.** Rent, Deposit and Instalment payments are ledger entries linked to their Rental or Finance Sale. The part of a Bond kept at Return counts as income. *(rentals, finance-sales)*
 2. **Ambiguous existing Cars become Sale Cars.** Cars currently flagged both "for rent" and "for sale", or neither, default to Sale Car, and the migration lists them for review. *(car-purpose-and-ownership)*
 3. **Overpaying a Finance Sale is rejected.** A payment larger than the remaining balance isn't accepted. *(finance-sales)*
-4. **Maintenance "due soon" thresholds.** Within 30 days or 1,000 km, plus an estimated km when the last reading is old. *(maintenance)*
+4. **Maintenance "due soon" thresholds.** Within 30 days or 1,000 km, plus an estimated km once the last reading is 7+ days old (built in migration 8; constants in `src/lib/maintenance.ts`). *(maintenance)*
 5. ~~**"Paid by renter" becomes "Paid by customer"**~~ (done in migration 6) for fines and tolls, because it now covers Finance Sales too. *(rentals)*
 6. **No partial week at Return.** The last week of Rent is charged in full even if the Car comes back mid-week. *(rentals)*
 7. **Bond paid in full at the start.** It is set per Rental (no standard amount) and can't be paid in parts. *(rentals)*

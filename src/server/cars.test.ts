@@ -56,8 +56,17 @@ describe('stock tab', () => {
     expect(updateCarStock(id, stock({ status: 'ready' }))).toBe('status_locked')
     expect(getCar(id)?.status).toBe('rented')
     // The rest of the tab can still be saved.
-    expect(updateCarStock(id, stock({ mileageKm: '1200' }))).toBe('ok')
-    expect(getCar(id)).toMatchObject({ status: 'rented', mileageKm: 1200 })
+    expect(updateCarStock(id, stock({ weeklyRate: '250' }))).toBe('ok')
+    expect(getCar(id)).toMatchObject({ status: 'rented', weeklyRateCents: 25000 })
+  })
+
+  it("leaves a rental car's odometer to Maintenance readings, but saves a sale car's", () => {
+    const rental = newCar('rental', 'R2', 'ready')
+    const sale = newCar('sale', 'S2', 'ready')
+    updateCarStock(rental, stock({ mileageKm: '1200' }))
+    updateCarStock(sale, stock({ mileageKm: '1200' }))
+    expect(getCar(rental)?.mileageKm).toBeNull()
+    expect(getCar(sale)?.mileageKm).toBe(1200)
   })
 
   it('saves only the prices for the car purpose', () => {

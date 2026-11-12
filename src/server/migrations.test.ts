@@ -101,3 +101,19 @@ describe('migration 7: finance sales', () => {
     expect(() => insert(1000, 3, 3000)).not.toThrow()     // last instalment is 3000
   })
 })
+
+describe('migration 8: maintenance', () => {
+  it("turns rental cars' odometer into their first reading", () => {
+    const db = new DatabaseSync(':memory:')
+    migrate(db, 7)
+    db.exec(`INSERT INTO cars (id, purpose, plate, make, model, mileage_km, updated_at) VALUES
+      (1, 'rental', 'R1', 'Toyota', 'Corolla', 120000, '2026-11-08T07:45:42.340Z'),
+      (2, 'rental', 'R2', 'Toyota', 'Corolla', NULL, '2026-11-08T07:45:42.340Z'),
+      (3, 'sale', 'S1', 'Toyota', 'Corolla', 90000, '2026-11-08T07:45:42.340Z')`)
+    migrate(db, 8)
+    expect(db.prepare('SELECT car_id AS carId, read_on AS readOn, km FROM odometer_readings').all().map((r) => ({ ...r })))
+      .toEqual([{ carId: 1, readOn: '2026-11-08', km: 120000 }])
+    expect(db.prepare('SELECT service_interval_km AS km, service_interval_months AS months FROM cars WHERE id = 1').get())
+      .toEqual({ km: null, months: null })
+  })
+})

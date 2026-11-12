@@ -32,6 +32,19 @@ _Avoid_: Out, hired
 Servicing a Rental Car needs every so many kilometres or months, whichever comes first.
 _Avoid_: Booking, job, repair
 
+**Service interval**:
+How often a Rental Car is serviced: every N km and/or every M months, whichever comes first.
+
+**Odometer reading**:
+A dated km value staff record for a Rental Car, e.g. from a dashboard photo the Renter sends. The latest one is the Car's odometer.
+_Avoid_: Mileage (in new text)
+
+**Service**:
+Maintenance done on a Rental Car, with date, km, what was done and cost. It restarts the countdown to the next one.
+
+**Due soon**:
+A Rental Car that is overdue for its next Service, or within 30 days or 1,000 km of it.
+
 ## Customers
 
 **Customer**:

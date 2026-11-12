@@ -23,6 +23,7 @@ import { Route as FleetIndexRouteImport } from './routes/fleet/index'
 import { Route as FleetFinesRouteImport } from './routes/fleet/fines'
 import { Route as FleetInvoicesRouteImport } from './routes/fleet/invoices'
 import { Route as FleetLeadsRouteImport } from './routes/fleet/leads'
+import { Route as FleetMaintenanceRouteImport } from './routes/fleet/maintenance'
 import { Route as FleetRentalsRouteImport } from './routes/fleet/rentals'
 import { Route as FleetSalesRouteImport } from './routes/fleet/sales'
 import { Route as FleetStockRouteImport } from './routes/fleet/stock'
@@ -102,6 +103,11 @@ const FleetLeadsRoute = FleetLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => FleetRouteRoute,
 } as any)
+const FleetMaintenanceRoute = FleetMaintenanceRouteImport.update({
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => FleetRouteRoute,
+} as any)
 const FleetRentalsRoute = FleetRentalsRouteImport.update({
   id: '/rentals',
   path: '/rentals',
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
+  '/fleet/maintenance': typeof FleetMaintenanceRoute
   '/fleet/rentals': typeof FleetRentalsRoute
   '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
+  '/fleet/maintenance': typeof FleetMaintenanceRoute
   '/fleet/rentals': typeof FleetRentalsRoute
   '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/fleet/fines': typeof FleetFinesRoute
   '/fleet/invoices': typeof FleetInvoicesRoute
   '/fleet/leads': typeof FleetLeadsRoute
+  '/fleet/maintenance': typeof FleetMaintenanceRoute
   '/fleet/rentals': typeof FleetRentalsRoute
   '/fleet/sales': typeof FleetSalesRoute
   '/fleet/stock': typeof FleetStockRoute
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
+    | '/fleet/maintenance'
     | '/fleet/rentals'
     | '/fleet/sales'
     | '/fleet/stock'
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
+    | '/fleet/maintenance'
     | '/fleet/rentals'
     | '/fleet/sales'
     | '/fleet/stock'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/fleet/fines'
     | '/fleet/invoices'
     | '/fleet/leads'
+    | '/fleet/maintenance'
     | '/fleet/rentals'
     | '/fleet/sales'
     | '/fleet/stock'
@@ -405,6 +417,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FleetLeadsRouteImport
       parentRoute: typeof FleetRouteRoute
     }
+    '/fleet/maintenance': {
+      id: '/fleet/maintenance'
+      path: '/maintenance'
+      fullPath: '/fleet/maintenance'
+      preLoaderRoute: typeof FleetMaintenanceRouteImport
+      parentRoute: typeof FleetRouteRoute
+    }
     '/fleet/rentals': {
       id: '/fleet/rentals'
       path: '/rentals'
@@ -468,6 +487,7 @@ interface FleetRouteRouteChildren {
   FleetFinesRoute: typeof FleetFinesRoute
   FleetInvoicesRoute: typeof FleetInvoicesRoute
   FleetLeadsRoute: typeof FleetLeadsRoute
+  FleetMaintenanceRoute: typeof FleetMaintenanceRoute
   FleetRentalsRoute: typeof FleetRentalsRoute
   FleetSalesRoute: typeof FleetSalesRoute
   FleetStockRoute: typeof FleetStockRoute
@@ -480,6 +500,7 @@ const FleetRouteRouteChildren: FleetRouteRouteChildren = {
   FleetFinesRoute: FleetFinesRoute,
   FleetInvoicesRoute: FleetInvoicesRoute,
   FleetLeadsRoute: FleetLeadsRoute,
+  FleetMaintenanceRoute: FleetMaintenanceRoute,
   FleetRentalsRoute: FleetRentalsRoute,
   FleetSalesRoute: FleetSalesRoute,
   FleetStockRoute: FleetStockRoute,

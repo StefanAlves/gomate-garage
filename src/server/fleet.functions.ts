@@ -20,6 +20,7 @@ import * as ledger from './transactions.server'
 import * as customers from './customers.server'
 import * as finance from './finance.server'
 import * as rentals from './rentals.server'
+import * as maintenance from './maintenance.server'
 
 // Fleet section RPCs: stock, fines & tolls, the money ledger and the overview.
 // Same conventions as garage.functions.ts.
@@ -50,6 +51,7 @@ export const getFleetOverview = createServerFn({ method: 'GET' })
       unpaid: charges.unpaidCharges(),
       expiring: cars.expiringCompliance(addDays(today, 30)),
       overdueFinance: finance.overdueFinanceSales(today),
+      maintenance: maintenance.maintenanceCounts(today),
       rentalsBehind: (() => {
         const behind = rentals.listRentals({ status: 'active', show: 'behind', sort: 'arrears' }, today)
         return { count: behind.length, owedCents: behind.reduce((s, r) => s + r.owedCents, 0) }

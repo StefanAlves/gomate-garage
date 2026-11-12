@@ -1,6 +1,6 @@
 # Rental Car Maintenance
 
-Status: ready-for-agent
+Status: done (2026-11-12, branch `maintenance`)
 Date: 2026-11-12
 Related: GLOSSARY.md, SPECs/car-purpose-and-ownership.md, SPECs/rentals.md. Replaces the retired SPECs/bookings-module.md.
 
@@ -78,6 +78,16 @@ Rental Cars spend most of their time with Renters, and each one needs servicing 
   - an old reading with an estimate;
   - a correction reading lower than the previous one.
 - Data module tests: a service writes the reading and the expense; a lower reading without confirmation is rejected.
+
+## Implementation notes
+
+- Either part of the interval can be blank (km only or months only). With no reading and no service yet, only the date counts.
+- The estimate is used once the latest reading is 7 days old (`STALE_READING_DAYS`), and it also drives "due soon" by km, so a Car can show as probably due without a new reading.
+- A reading out of order with the history in either direction (lower than an earlier one, or higher than a later one) needs the correction tick. Readings can't be in the future.
+- `odometer_readings.service_id` links a service's own reading, so deleting a service removes its reading and its expense; that reading can't be deleted on its own.
+- A reading taken while the Car is rented is linked to that Rental automatically.
+- Migration 8 turned each Rental Car's existing odometer value into its first reading, dated from when the Car record was last updated.
+- New Rental Cars: the odometer typed in when adding the Car becomes the first reading.
 
 ## Out of Scope
 

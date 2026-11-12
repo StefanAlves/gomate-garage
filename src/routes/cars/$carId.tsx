@@ -10,6 +10,8 @@ import { deleteCar, getCar, updateCar } from '~/server/garage.functions'
 import { getCarFleetRecords, updateCarStock } from '~/server/fleet.functions'
 import { rentalsForCar } from '~/server/rentals.functions'
 import { financeSalesForCar } from '~/server/finance.functions'
+import { deleteReading, deleteService, getMaintenance } from '~/server/maintenance.functions'
+import { DueDate, DueKm, IntervalForm, MaintenanceBadge, OdometerValue, ReadingForm, ServiceForm } from '~/components/maintenance'
 import { FinanceTable } from '~/components/finance-table'
 import { RentalTable } from '~/components/rental-table'
 import type { Charge } from '~/server/charges.server'
@@ -26,13 +28,14 @@ export const Route = createFileRoute('/cars/$carId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.carId })
     if (!parsed.success) throw notFound()
-    const [car, records, rentals, sales] = await Promise.all([
+    const [car, records, rentals, sales, maintenance] = await Promise.all([
       getCar({ data: parsed.data }),
       getCarFleetRecords({ data: parsed.data }),
       rentalsForCar({ data: parsed.data }),
       financeSalesForCar({ data: parsed.data }),
+      getMaintenance({ data: parsed.data }),
     ])
-    return { car, records, rentals, sales }
+    return { car, records, rentals, sales, maintenance }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.car.plate ?? 'Car'} · Garage` }] }),
   component: CarPage,
@@ -45,7 +48,8 @@ function CarPage() {
   const isRental = car.purpose === 'rental'
   const activeRental = rentals.find((r) => r.status === 'active')
   const currentSale = sales.find((f) => f.status === 'active') ?? sales.find((f) => f.status === 'completed')
-  const hidden: TabKey = isRental ? 'finance' : 'rentals'
+  // Rental cars get Rentals and Maintenance; Sale cars get Finance and the (placeholder) vehicle history.
+  const hidden: TabKey[] = isRental ? ['finance', 'history'] : ['rentals', 'maintenance']
 
   return (
     <div className="stack">
@@ -83,7 +87,7 @@ function CarPage() {
       <MaintenanceSummary />
 
       <DetailTabs<TabKey>
-        selected={tab === hidden ? 'specs' : tab}
+        selected={hidden.includes(tab) ? 'specs' : tab}
         onChange={(t) => navigate({ search: { tab: t === 'specs' ? undefined : t }, replace: true })}
         tabs={[
           { id: 'specs', label: 'Specifications' },
@@ -91,7 +95,9 @@ function CarPage() {
           isRental
             ? { id: 'rentals' as const, label: 'Rentals', count: rentals.length }
             : { id: 'finance' as const, label: 'Finance', count: sales.length },
-          { id: 'history', label: 'Vehicle history' },
+          isRental
+            ? { id: 'maintenance' as const, label: 'Maintenance' }
+            : { id: 'history' as const, label: 'Vehicle history' },
           { id: 'fines', label: 'Fines', count: records.fines.length },
           { id: 'tolls', label: 'Tolls', count: records.tolls.length },
           { id: 'money', label: 'Money', count: records.transactions.length },
@@ -119,6 +125,8 @@ function CarPage() {
                   {sales.length === 0 ? <p className="muted">This car hasn't been sold yet.</p> : <FinanceTable sales={sales} hide="car" />}
                 </section>
               )
+            case 'maintenance':
+              return <MaintenanceTab />
             case 'history':
               return <ComingSoon title="Vehicle history">Every workshop booking for this car, newest first.</ComingSoon>
             case 'fines':
@@ -151,15 +159,26 @@ function CarPage() {
   )
 }
 
+/** Header tiles. Rental cars show the worked-out next service; Sale cars the typed-in one. */
 function MaintenanceSummary() {
-  const { car } = Route.useLoaderData()
-  const tiles = [
-    ['Latest odometer', formatKm(car.mileageKm)],
-    ['Next service', formatDate(car.nextServiceDate)],
-    ['Next service km', formatKm(car.nextServiceKm)],
-    ['Rego expiry', formatDate(car.regoExpiry)],
-    ['Insurance expiry', formatDate(car.insuranceExpiry)],
-  ] as const
+  const { car, maintenance } = Route.useLoaderData()
+  const { due } = maintenance
+  const tiles = car.purpose === 'rental'
+    ? ([
+        ['Latest odometer', <OdometerValue key="odo" due={due} />],
+        ['Next service', <DueDate key="date" due={due} />],
+        ['Next service km', <DueKm key="km" due={due} />],
+        ['Service', <MaintenanceBadge key="state" state={due.state} />],
+        ['Rego expiry', formatDate(car.regoExpiry)],
+        ['Insurance expiry', formatDate(car.insuranceExpiry)],
+      ] as const)
+    : ([
+        ['Latest odometer', formatKm(car.mileageKm)],
+        ['Next service', formatDate(car.nextServiceDate)],
+        ['Next service km', formatKm(car.nextServiceKm)],
+        ['Rego expiry', formatDate(car.regoExpiry)],
+        ['Insurance expiry', formatDate(car.insuranceExpiry)],
+      ] as const)
   return (
     <section className="tiles compact" aria-label="Maintenance tracking">
       {tiles.map(([label, value]) => (
@@ -169,6 +188,146 @@ function MaintenanceSummary() {
         </div>
       ))}
     </section>
+  )
+}
+
+type MaintenancePanel = 'reading' | 'service' | 'interval' | null
+
+/** Rental cars: service interval, odometer readings and services. */
+function MaintenanceTab() {
+  const { car, maintenance } = Route.useLoaderData()
+  const { interval, readings, services, due, today } = maintenance
+  const router = useRouter()
+  const removeReading = useServerFn(deleteReading)
+  const removeService = useServerFn(deleteService)
+  const [panel, setPanel] = useState<MaintenancePanel>(null)
+  const [notice, setNotice] = useState<string>()
+  const [error, setError] = useState<string>()
+  const done = (message: string) => async () => {
+    setPanel(null)
+    setNotice(message)
+    setError(undefined)
+    await router.invalidate()
+  }
+  const hasInterval = interval.km != null || interval.months != null
+  const intervalText = [interval.km && `every ${formatKm(interval.km)}`, interval.months && `every ${interval.months} months`]
+    .filter(Boolean).join(' or ')
+
+  return (
+    <div className="stack">
+      {notice && <p className="notice" role="status">{notice}</p>}
+      <FormError error={error} />
+
+      <section className="panel stack">
+        <div className="row between wrap">
+          <h2>Service interval</h2>
+          {hasInterval && panel !== 'interval' && (
+            <button type="button" className="ghost" onClick={() => setPanel('interval')}>Change</button>
+          )}
+        </div>
+        {panel === 'interval' || !hasInterval ? (
+          <IntervalForm carId={car.id} interval={interval} onDone={done('Service interval saved.')}
+            onCancel={panel === 'interval' ? () => setPanel(null) : undefined} />
+        ) : (
+          <p>Service {intervalText}, whichever comes first. <MaintenanceBadge state={due.state} /></p>
+        )}
+      </section>
+
+      <div className="row wrap">
+        <button type="button" onClick={() => setPanel('reading')}>Add reading</button>
+        <button type="button" className="ghost" onClick={() => setPanel('service')}>Record service</button>
+      </div>
+      {panel === 'reading' && (
+        <section className="panel stack">
+          <h2>Add odometer reading</h2>
+          <ReadingForm carId={car.id} today={today} onDone={done('Reading saved.')} onCancel={() => setPanel(null)} />
+        </section>
+      )}
+      {panel === 'service' && (
+        <section className="panel stack">
+          <h2>Record service</h2>
+          <ServiceForm carId={car.id} today={today} km={due.latest?.km ?? null} onDone={done('Service saved. The countdown has restarted.')}
+            onCancel={() => setPanel(null)} />
+        </section>
+      )}
+
+      <div className="two-col">
+        <section className="panel stack">
+          <h2>Services</h2>
+          {services.length === 0 ? (
+            <p className="muted">No services recorded yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Date</th><th className="num">Km</th><th>Work</th><th className="num">Cost</th><th aria-label="Delete" /></tr>
+                </thead>
+                <tbody>
+                  {services.map((v) => (
+                    <tr key={v.id}>
+                      <td className="nowrap">{formatDate(v.servicedOn)}</td>
+                      <td className="num">{v.km.toLocaleString('en-AU')}</td>
+                      <td>{v.description}</td>
+                      <td className="num">{v.costCents ? formatMoney(v.costCents) : '—'}</td>
+                      <td>
+                        <DeleteButton label="Delete" onConfirm={async () => {
+                          await removeService({ data: { id: v.id } })
+                          await done('Service deleted, with its reading and expense.')()
+                        }} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="panel stack">
+          <h2>Odometer readings</h2>
+          {readings.length === 0 ? (
+            <p className="muted">No readings yet. Add one whenever the renter sends a dashboard photo.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Date</th><th className="num">Km</th><th>From</th><th aria-label="Delete" /></tr>
+                </thead>
+                <tbody>
+                  {readings.map((r, i) => {
+                    const prev = readings[i + 1]
+                    const lower = prev && r.km < prev.km
+                    return (
+                      <tr key={r.id}>
+                        <td className="nowrap">{formatDate(r.readOn)}</td>
+                        <td className={`num ${lower ? 'urgent' : ''}`} title={lower ? 'Lower than the reading before it (correction)' : undefined}>
+                          {r.km.toLocaleString('en-AU')}{prev && !lower && <div className="muted small">+{(r.km - prev.km).toLocaleString('en-AU')}</div>}
+                        </td>
+                        <td className="small">
+                          {r.serviceId ? 'Service' : r.rentalId ? (
+                            <Link to="/rentals/$rentalId" params={{ rentalId: String(r.rentalId) }}>Rental</Link>
+                          ) : <span className="muted">—</span>}
+                          {r.note && <div className="muted">{r.note}</div>}
+                        </td>
+                        <td>
+                          {!r.serviceId && (
+                            <DeleteButton label="Delete" onConfirm={async () => {
+                              const res = await removeReading({ data: { id: r.id } })
+                              if (res.ok) await done('Reading deleted.')()
+                              else setError(res.errors.form)
+                            }} />
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   )
 }
 
@@ -187,6 +346,7 @@ function SpecsTab() {
       <CarForm
         key={car.updatedAt}
         initial={car}
+        purpose={car.purpose}
         submitLabel="Save changes"
         onSubmit={(values) => update({ data: { id: car.id, values } })}
         onSuccess={async () => {

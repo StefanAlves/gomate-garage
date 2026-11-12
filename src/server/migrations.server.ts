@@ -352,6 +352,45 @@ export const migrations: string[] = [
   ALTER TABLE transactions ADD COLUMN finance_sale_id INTEGER REFERENCES finance_sales(id) ON DELETE RESTRICT;
   CREATE INDEX transactions_finance_sale_idx ON transactions(finance_sale_id);
   `,
+
+  // 8: Rental Car maintenance (SPECs/maintenance.md). A service interval per
+  //    car, an odometer history (the latest reading is cached in mileage_km)
+  //    and services, whose cost is an `expense` row in the ledger. Rental cars'
+  //    existing odometer values become their first reading.
+  `
+  ALTER TABLE cars ADD COLUMN service_interval_km INTEGER CHECK (service_interval_km > 0);
+  ALTER TABLE cars ADD COLUMN service_interval_months INTEGER CHECK (service_interval_months > 0);
+
+  CREATE TABLE services (
+    id             INTEGER PRIMARY KEY,
+    car_id         INTEGER NOT NULL REFERENCES cars(id) ON DELETE RESTRICT,
+    serviced_on    TEXT NOT NULL,      -- YYYY-MM-DD
+    km             INTEGER NOT NULL CHECK (km >= 0),
+    description    TEXT NOT NULL,
+    cost_cents     INTEGER NOT NULL DEFAULT 0 CHECK (cost_cents >= 0),
+    transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+    created_at     TEXT NOT NULL DEFAULT (${now}),
+    updated_at     TEXT NOT NULL DEFAULT (${now})
+  );
+  CREATE INDEX services_car_idx ON services(car_id, serviced_on);
+
+  CREATE TABLE odometer_readings (
+    id         INTEGER PRIMARY KEY,
+    car_id     INTEGER NOT NULL REFERENCES cars(id) ON DELETE RESTRICT,
+    read_on    TEXT NOT NULL,          -- YYYY-MM-DD
+    km         INTEGER NOT NULL CHECK (km >= 0),
+    rental_id  INTEGER REFERENCES rentals(id) ON DELETE SET NULL,
+    service_id INTEGER REFERENCES services(id) ON DELETE CASCADE,  -- the reading a service wrote
+    note       TEXT,
+    created_at TEXT NOT NULL DEFAULT (${now}),
+    updated_at TEXT NOT NULL DEFAULT (${now})
+  );
+  CREATE INDEX odometer_readings_car_idx ON odometer_readings(car_id, read_on);
+
+  INSERT INTO odometer_readings (car_id, read_on, km, note)
+  SELECT id, substr(updated_at, 1, 10), mileage_km, 'From the car record'
+  FROM cars WHERE purpose = 'rental' AND mileage_km IS NOT NULL;
+  `,
 ]
 
 /** Runs every migration after the database's user_version, up to `target` (default: all). */

@@ -1,5 +1,5 @@
 import {
-  CAR_PURPOSES, COLOURS, FUEL_TYPES, MANUAL_CAR_STATUSES, carInputSchema, newCarInputSchema, type CarValues, type NewCarValues,
+  CAR_PURPOSES, COLOURS, type CarPurpose, FUEL_TYPES, MANUAL_CAR_STATUSES, carInputSchema, newCarInputSchema, type CarValues, type NewCarValues,
 } from '~/lib/schemas'
 import { carPurposeLabel, carStatusLabel, formatMonth, fuelLabel } from '~/lib/format'
 import { FormError, FormSection, useSchemaForm, type Result } from './form'
@@ -57,12 +57,15 @@ type Submit<T> = (values: T) => Promise<Result<{ id: number }>>
  */
 export function CarForm({
   initial,
+  purpose,
   submitLabel,
   onSuccess,
   children,
   ...mode
 }: {
   initial?: Partial<CarValues>
+  /** The saved car's purpose. Rental cars' odometer and next service come from the Maintenance tab. */
+  purpose?: CarPurpose
   submitLabel: string
   onSuccess: (value: { id: number }) => void | Promise<void>
   children?: React.ReactNode
@@ -75,6 +78,7 @@ export function CarForm({
     onSuccess,
   })
   const compact = !!mode.isNew
+  const maintained = !mode.isNew && purpose === 'rental'
   const color = initial?.color
   const colours = color && !(COLOURS as readonly string[]).includes(color) ? [...colourOptions, [color, color] as const] : colourOptions
   const upper = { textTransform: 'uppercase' } as const
@@ -99,7 +103,9 @@ export function CarForm({
           {(f) => <f.TextField label="Registration" required autoComplete="off" placeholder="e.g. ABC123" style={upper} />}
         </form.AppField>
         <form.AppField name="color">{(f) => <f.SelectField label="Colour" options={colours} />}</form.AppField>
-        <form.AppField name="mileageKm">{(f) => <f.TextField label="Odometer (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+        {!maintained && (
+          <form.AppField name="mileageKm">{(f) => <f.TextField label="Odometer (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+        )}
         <form.AppField name="fuelType">{(f) => <f.SelectField label="Fuel" options={fuelOptions} />}</form.AppField>
         <form.AppField name="transmission">{(f) => <f.TextField label="Transmission" placeholder="e.g. Automatic" />}</form.AppField>
       </FormSection>
@@ -122,9 +128,16 @@ export function CarForm({
             <form.AppField name="radioPin">{(f) => <f.TextField label="Radio PIN" autoComplete="off" placeholder="e.g. 1234" />}</form.AppField>
           </FormSection>
 
-          <FormSection title="Maintenance tracking">
-            <form.AppField name="nextServiceDate">{(f) => <f.TextField label="Next service date" type="date" />}</form.AppField>
-            <form.AppField name="nextServiceKm">{(f) => <f.TextField label="Next service (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+          <FormSection
+            title="Maintenance tracking"
+            description={maintained ? 'The odometer and next service are worked out on the Maintenance tab.' : undefined}
+          >
+            {!maintained && (
+              <>
+                <form.AppField name="nextServiceDate">{(f) => <f.TextField label="Next service date" type="date" />}</form.AppField>
+                <form.AppField name="nextServiceKm">{(f) => <f.TextField label="Next service (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+              </>
+            )}
             <form.AppField name="nextTransmissionDate">{(f) => <f.TextField label="Next transmission service" type="date" />}</form.AppField>
             <form.AppField name="nextTransmissionKm">
               {(f) => <f.TextField label="Next transmission (km)" type="number" inputMode="numeric" min={0} />}

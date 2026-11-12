@@ -16,7 +16,7 @@ export const Route = createFileRoute('/fleet/')({
 
 function Overview() {
   const { period } = Route.useSearch()
-  const { today, totals, statusCounts, unpaid, expiring, overdueFinance, rentalsBehind } = Route.useLoaderData()
+  const { today, totals, statusCounts, unpaid, expiring, overdueFinance, rentalsBehind, maintenance } = Route.useLoaderData()
   const fines = unpaid.find((u) => u.kind === 'fine')
   const tolls = unpaid.find((u) => u.kind === 'toll')
 
@@ -73,6 +73,25 @@ function Overview() {
         </dl>
       </section>
 
+      <section className="panel stack">
+        <div className="row between wrap">
+          <h2>Rental cars due for a service</h2>
+          <Link to="/fleet/maintenance" className="small">Open maintenance →</Link>
+        </div>
+        <dl className="dl">
+          <dt>Overdue</dt>
+          <dd className={maintenance.overdue ? 'urgent' : undefined}>{maintenance.overdue || 'None'}</dd>
+          <dt>Due within 30 days or 1,000 km</dt>
+          <dd>{maintenance.dueSoon || 'None'}</dd>
+          {maintenance.noInterval > 0 && (
+            <>
+              <dt><Link to="/fleet/maintenance" search={{ show: 'all' }}>No service interval set</Link></dt>
+              <dd className="muted">{maintenance.noInterval}</dd>
+            </>
+          )}
+        </dl>
+      </section>
+
       <div className="two-col">
         <section className="panel stack">
           <h2>Unpaid fines & tolls</h2>
@@ -105,7 +124,6 @@ function Overview() {
         </section>
       </div>
 
-      <p className="muted small">"Owed to you" and "Overdue" tiles arrive with Rentals and fleet invoices.</p>
     </div>
   )
 }

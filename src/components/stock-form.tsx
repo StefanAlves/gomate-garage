@@ -73,7 +73,9 @@ export function StockForm({
       </FormSection>
 
       <FormSection title="Listing details">
-        <form.AppField name="mileageKm">{(f) => <f.TextField label="Odometer (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+        {!rental && (
+          <form.AppField name="mileageKm">{(f) => <f.TextField label="Odometer (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
+        )}
         <form.AppField name="listingDescription">
           {(f) => <f.TextareaField label="Description" hint="shown to buyers and renters" className="span-all" />}
         </form.AppField>

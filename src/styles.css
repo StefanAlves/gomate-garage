@@ -211,3 +211,9 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .badge.inst-part_paid { color: #1d5fbf; }
 .badge.inst-overdue { color: var(--urgent); }
 .badge.inst-upcoming { color: var(--muted); }
+
+/* Maintenance */
+.badge.maint-overdue { color: var(--urgent); }
+.badge.maint-due_soon { color: #c26a00; }
+.badge.maint-no_interval { color: var(--muted); }
+.badge.maint-ok { color: #128c4a; }

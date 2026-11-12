@@ -137,3 +137,17 @@ export const financeStatusLabel: Record<FinanceStatus, string> = {
   completed: 'Completed',
   defaulted: 'Defaulted',
 }
+
+export const maintenanceStateLabel: Record<import('./maintenance').MaintenanceState, string> = {
+  overdue: 'Service overdue',
+  due_soon: 'Service due soon',
+  no_interval: 'Set interval',
+  ok: 'OK',
+}
+
+/** "in 12 days" / "today" / "3 days ago". */
+export const formatDaysLeft = (days: number) =>
+  days === 0 ? 'today' : days > 0 ? `in ${days} day${days === 1 ? '' : 's'}` : `${-days} day${days === -1 ? '' : 's'} ago`
+
+/** "1,200 km to go" / "300 km over". */
+export const formatKmLeft = (km: number) => (km >= 0 ? `${km.toLocaleString('en-AU')} km to go` : `${(-km).toLocaleString('en-AU')} km over`)
