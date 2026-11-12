@@ -1,5 +1,5 @@
 import type { Client, InStatement } from '@libsql/client'
-import { openClient } from '../src/server/migrations.server.ts'
+import { openClient, schemaVersion, versionStatements } from '../src/server/migrations.server.ts'
 
 // Shared by the command-line scripts. They run with plain Node (type
 // stripping), so imports name their .ts files and avoid the app's ~/ paths.
@@ -65,12 +65,14 @@ export async function copyDatabase(from: Client, to: Client) {
       statements.push({ sql: `INSERT INTO "${table.name}" (${columns}) VALUES (${marks})`, args: rs.columns.map((_, i) => row[i]!) })
   }
   statements.push(...objects.filter((o) => o.type !== 'table').map((o) => o.sql))
-  const version = Number((await from.execute('PRAGMA user_version')).rows[0]![0])
-  statements.push(`PRAGMA user_version = ${version}`)
+  // The schema_version table is copied with the rest; an older source only has PRAGMA user_version.
+  const version = await schemaVersion(from)
+  if (!objects.some((o) => o.name === 'schema_version')) statements.push(...versionStatements(version))
   await to.migrate(statements)
 
   const broken = await to.execute('PRAGMA foreign_key_check')
   if (broken.rows.length) throw new Error(`The copy has ${broken.rows.length} broken foreign keys.`)
+  if ((await schemaVersion(to)) !== version) throw new Error('The copy has the wrong schema version.')
   const [a, b] = [await tableCounts(from), await tableCounts(to)]
   for (const [name, n] of Object.entries(a))
     if (b[name] !== n) throw new Error(`Row counts differ for ${name}: ${n} in the source, ${b[name]} in the copy.`)

@@ -82,7 +82,7 @@ Domain language lives in `GLOSSARY.md`. The business rents and sells its own car
 
 ## Database migrations
 
-`src/server/migrations.server.ts` keeps an ordered list of migrations and tracks the applied count in `PRAGMA user_version`. They run only from `npm run migrate` (never on server start; the app refuses to run against an older schema), each as one batch with foreign keys off and a foreign-key check before it commits. Back up first (`npm run backup`). Add new migrations to the end of the list; never edit one that has shipped.
+`src/server/migrations.server.ts` keeps an ordered list of migrations and tracks the applied count in the one-row `schema_version` table (Turso doesn't allow setting `PRAGMA user_version`; older local files are read from it). They run only from `npm run migrate` (never on server start; the app refuses to run against an older schema), each as one batch with foreign keys off and a foreign-key check before it commits. Back up first (`npm run backup`). Add new migrations to the end of the list; never edit one that has shipped.
 
 ## Layout
 

@@ -44,7 +44,7 @@ Vercel runs the server as serverless functions with temporary disks, so neither 
 
 - Done. Stop running migrations when the server starts. On Vercel, every cold start would race to migrate the database.
 - Migrations run as an explicit step: `npm run migrate`, run locally against the Turso database before a deploy that needs one. Tests still migrate their in-memory database.
-- Keep tracking the schema version with `PRAGMA user_version` if Turso supports reading and setting it. Otherwise switch to a one-row `schema_version` table, seeded from `user_version` (8) during the import.
+- Turso refuses `PRAGMA user_version = n` (found on the first import, 2026-11-12), so the version lives in a one-row `schema_version` table. A database without that table still has its version read from `user_version`, and the import seeds the table from it.
 - The existing rule stays: back up before migrating. On Turso, that means creating a branch or point-in-time copy first.
 
 ### ID photos

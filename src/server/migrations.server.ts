@@ -1,13 +1,15 @@
 import '@tanstack/react-start/server-only'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { createClient, LibsqlBatchError, type Client } from '@libsql/client'
+import { createClient, LibsqlBatchError, type Client, type InStatement } from '@libsql/client'
 
 export const sqlNow = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
 const now = sqlNow
 
 /*
- * Schema migrations, tracked with PRAGMA user_version. Each entry runs once,
+ * Schema migrations, tracked in the one-row schema_version table (Turso does
+ * not allow setting PRAGMA user_version; databases from before the table
+ * still have their version read from it). Each entry runs once,
  * in order, inside a transaction. Never edit a shipped migration; add a new one.
  * They run from `npm run migrate` (scripts/migrate.ts), never when the server
  * starts, except for the tests' in-memory database.
@@ -444,8 +446,22 @@ export function openClient(env: Record<string, string | undefined>): Client {
 }
 
 export async function schemaVersion(client: Client) {
-  const rs = await client.execute('PRAGMA user_version')
+  const table = await client.execute(`SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'schema_version'`)
+  const rs = table.rows.length
+    ? await client.execute('SELECT version FROM schema_version WHERE id = 1')
+    : await client.execute('PRAGMA user_version') // databases from before the table
   return Number(rs.rows[0]?.[0] ?? 0)
+}
+
+/** Statements that record `version` as the schema version (inside the caller's transaction). */
+export function versionStatements(version: number): InStatement[] {
+  return [
+    `CREATE TABLE IF NOT EXISTS schema_version (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`,
+    {
+      sql: 'INSERT INTO schema_version (id, version) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET version = excluded.version',
+      args: [version],
+    },
+  ]
 }
 
 export const latestVersion = migrations.length
@@ -498,18 +514,19 @@ export function splitStatements(sql: string): string[] {
 const foreignKeyGuard = `SELECT CASE WHEN EXISTS (SELECT 1 FROM pragma_foreign_key_check) THEN json('broken foreign keys') END`
 
 /**
- * Runs every migration after the database's user_version, up to `target`
+ * Runs every migration after the database's schema version, up to `target`
  * (default: all). Each one is a single batch with foreign keys switched off
  * (table rebuilds drop tables that others reference), checked before it
  * commits.
  */
 export async function migrate(client: Client, target = migrations.length) {
   for (let v = await schemaVersion(client); v < target; v++) {
-    const statements = [...splitStatements(migrations[v]!), foreignKeyGuard, `PRAGMA user_version = ${v + 1}`]
+    const body = splitStatements(migrations[v]!)
+    const statements: InStatement[] = [...body, foreignKeyGuard, ...versionStatements(v + 1)]
     try {
       await client.migrate(statements)
     } catch (err) {
-      if (err instanceof LibsqlBatchError && err.statementIndex === statements.length - 2)
+      if (err instanceof LibsqlBatchError && err.statementIndex === body.length)
         throw new Error(`Migration ${v + 1} left broken foreign keys`)
       throw err
     }

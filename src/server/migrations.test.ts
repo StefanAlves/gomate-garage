@@ -1,6 +1,6 @@
 import { createClient, type Client, type InValue } from '@libsql/client'
 import { describe, expect, it } from 'vitest'
-import { migrate, splitStatements } from './migrations.server'
+import { migrate, schemaVersion, splitStatements } from './migrations.server'
 
 const fresh = () => createClient({ url: ':memory:' })
 const rows = async (db: Client, sql: string, args: InValue[] = []) => {
@@ -27,7 +27,7 @@ function addCar(db: Client, id: number, status: string, forRent: 0 | 1, forSale:
 
 const carRow = async (db: Client, id: number) => (await rows(db, 'SELECT * FROM cars WHERE id = ?', [id]))[0]!
 
-describe('statement splitter', async () => {
+describe('statement splitter', () => {
   it('splits at top-level semicolons only', async () => {
     expect(splitStatements(`CREATE TABLE a (x TEXT DEFAULT 'a;b'); -- note; here
       INSERT INTO a VALUES ('c;d') ;
@@ -39,19 +39,38 @@ describe('statement splitter', async () => {
   })
 })
 
-describe('foreign key check', async () => {
+describe('schema version', () => {
+  it('is kept in the schema_version table, never in PRAGMA user_version (Turso refuses to set it)', async () => {
+    const db = fresh()
+    await migrate(db)
+    expect(await rows(db, 'SELECT version FROM schema_version')).toEqual([{ version: 9 }])
+    expect(await rows(db, 'PRAGMA user_version')).toEqual([{ user_version: 0 }])
+  })
+
+  it('reads PRAGMA user_version from a database made before the table, and carries on from there', async () => {
+    const db = fresh()
+    await migrate(db, 8)
+    await db.executeMultiple('DROP TABLE schema_version; PRAGMA user_version = 8')
+    expect(await schemaVersion(db)).toBe(8)
+    await migrate(db)
+    expect(await schemaVersion(db)).toBe(9)
+    expect(await rows(db, `SELECT name FROM sqlite_schema WHERE name = 'staff'`)).toEqual([{ name: 'staff' }])
+  })
+})
+
+describe('foreign key check', () => {
   it('rolls a migration back when it leaves a broken foreign key', async () => {
     const db = fresh()
     await migrate(db, 7)
     await db.execute('PRAGMA foreign_keys = OFF')
     await db.execute(`INSERT INTO rentals (customer_id, car_id, start_date) VALUES (98, 99, '2026-01-01')`)
     await expect(migrate(db, 8)).rejects.toThrow('Migration 8 left broken foreign keys')
-    expect(await rows(db, 'PRAGMA user_version')).toEqual([{ user_version: 7 }])
+    expect(await schemaVersion(db)).toBe(7)
     expect(await rows(db, `SELECT name FROM sqlite_schema WHERE name = 'services'`)).toEqual([])
   })
 })
 
-describe('migration 5: car purpose', async () => {
+describe('migration 5: car purpose', () => {
   it('maps the listing flags to a purpose', async () => {
     const db = await v4()
     await addCar(db, 1, 'ready', 1, 0)
@@ -104,7 +123,7 @@ describe('migration 5: car purpose', async () => {
   })
 })
 
-describe('migration 6: rentals', async () => {
+describe('migration 6: rentals', () => {
   it('renames paid_by_renter to paid_by_customer and leaves other statuses alone', async () => {
     const db = fresh()
     await migrate(db, 5)
@@ -117,7 +136,7 @@ describe('migration 6: rentals', async () => {
   })
 })
 
-describe('migration 7: finance sales', async () => {
+describe('migration 7: finance sales', () => {
   it('only accepts deals whose parts add up', async () => {
     const db = fresh()
     await migrate(db, 7)
@@ -132,7 +151,7 @@ describe('migration 7: finance sales', async () => {
   })
 })
 
-describe('migration 8: maintenance', async () => {
+describe('migration 8: maintenance', () => {
   it("turns rental cars' odometer into their first reading", async () => {
     const db = fresh()
     await migrate(db, 7)
