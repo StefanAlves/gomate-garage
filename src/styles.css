@@ -217,3 +217,11 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .badge.maint-due_soon { color: #c26a00; }
 .badge.maint-no_interval { color: var(--muted); }
 .badge.maint-ok { color: #128c4a; }
+
+/* Sign-in */
+.topbar .signed-in { margin-left: auto; display: flex; gap: .5rem; align-items: center; }
+.login { min-height: 80vh; display: grid; place-items: center; padding: 1rem; }
+.login form { width: min(100%, 360px); }
+.login h1 { margin: 0; font-size: 1.6rem; }
+.login p { margin: 0; }
+.login input { width: 100%; box-sizing: border-box; }

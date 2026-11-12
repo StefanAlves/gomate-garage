@@ -8,7 +8,11 @@
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/migrate.ts",
+    "backup": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/backup.ts",
+    "import": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/import.ts",
+    "staff": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/staff.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -39,5 +43,8 @@
     "@vercel/cli-config": {
       "zod": "$zod"
     }
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

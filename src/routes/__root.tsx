@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { getCurrentStaff } from '~/server/auth.functions'
 import appCss from '~/styles.css?url'
 
 export const Route = createRootRoute({
@@ -21,6 +22,11 @@ export const Route = createRootRoute({
       { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
     ],
   }),
+  // Who's signed in, for the top bar. Fetched once per page load: signing in
+  // or out is a full page load anyway.
+  loader: () => getCurrentStaff(),
+  staleTime: Infinity,
+  shouldReload: false,
   shellComponent: RootDocument,
   component: RootLayout,
 })
@@ -40,6 +46,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayout() {
+  const staff = Route.useLoaderData()
+  // The sign-in page has no navigation: nothing behind it is reachable yet.
+  if (!staff) return <main><Outlet /></main>
   return (
     <>
       <header className="topbar">
@@ -49,6 +58,10 @@ function RootLayout() {
           <Link to="/cars" activeProps={{ className: 'active' }}>Cars</Link>
           <Link to="/fleet" activeProps={{ className: 'active' }}>Fleet</Link>
         </nav>
+        <form method="post" action="/api/logout" className="signed-in">
+          <span className="muted small">{staff.name}</span>
+          <button type="submit" className="ghost small">Sign out</button>
+        </form>
       </header>
       <main>
         <Outlet />

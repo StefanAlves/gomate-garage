@@ -395,6 +395,33 @@ export const migrations: string[] = [
   SELECT id, substr(updated_at, 1, 10), mileage_km, 'From the car record'
   FROM cars WHERE purpose = 'rental' AND mileage_km IS NOT NULL;
   `,
+
+  // 9: staff sign-in (SPECs/deployment.md). Staff accounts are created from the
+  //    command line (scripts/staff.ts); there is no sign-up page. A session is
+  //    a random token in an httpOnly cookie; only its SHA-256 is stored, so a
+  //    copy of the database can't be used to sign in. Five wrong passwords in
+  //    a row lock the account for 15 minutes.
+  `
+  CREATE TABLE staff (
+    id              INTEGER PRIMARY KEY,
+    name            TEXT NOT NULL,
+    email           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash   TEXT NOT NULL,
+    failed_logins   INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,
+    disabled_at     TEXT,
+    created_at      TEXT NOT NULL DEFAULT (${now}),
+    updated_at      TEXT NOT NULL DEFAULT (${now})
+  );
+
+  CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,         -- hex SHA-256 of the cookie value
+    staff_id   INTEGER NOT NULL REFERENCES staff(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (${now})
+  ) WITHOUT ROWID;
+  CREATE INDEX sessions_staff_idx ON sessions(staff_id);
+  `,
 ]
 
 // ---- Runner -----------------------------------------------------------------

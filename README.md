@@ -1,18 +1,43 @@
 # Garage
 
-Customer and car registry for a garage. Built with TanStack Start and SQLite (Node's built-in `node:sqlite`).
+Customer and car registry for a garage. Built with TanStack Start and SQLite (libSQL: a local file in development, Turso in production), deployed on Vercel. Staff only: every page needs a sign-in.
 
 ```sh
 npm install
-npm run dev                 # http://localhost:3000
-npm run build && npm start  # production (Node 24+)
+npm run dev                 # http://localhost:3000, against data/garage.db
+npm run build && npm start  # production build on plain Node (Node 24+)
 npm test                    # Vitest, against an in-memory database
 npm run typecheck
 ```
 
-Data is stored in `data/garage.db`, created on first run. Set `DATABASE_PATH` to use a different file.
+### Where the data lives
 
-Customer ID photos (driver's licence front/back, passport) are stored in `data/uploads/customer-documents/`, outside `public/`. They are served only through `/api/documents/:id` with `Cache-Control: private, no-store`. Set `UPLOADS_PATH` to move the folder. Back it up together with the database: the database holds only each photo's file name.
+| | Local (`npm run dev`) | Vercel |
+|---|---|---|
+| Database | `data/garage.db` (`DATABASE_PATH`) | Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`) |
+| ID photos | `data/uploads/customer-documents/` (`UPLOADS_PATH`) | private Vercel Blob store (`BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID`) |
+
+An explicit `DATABASE_PATH` always wins over the Turso settings, so local development and tests never touch the live database even when `.env` holds Turso credentials. `.env` is git-ignored; never commit it.
+
+Customer ID photos (driver's licence front/back, passport) are never public: they are served only through `/api/documents/:id` to signed-in staff, with `Cache-Control: private, no-store`. The database holds only each photo's file name, so back the photos up together with the database.
+
+### Scripts
+
+The scripts read `.env`, so without `DATABASE_PATH` they act on **Turso**. Prefix `DATABASE_PATH=data/garage.db` to act on the local file.
+
+```sh
+npm run backup                       # dated copy into data/backups/ (do this before every migration)
+npm run migrate                      # bring the schema up to date (Turso needs -- --yes)
+npm run staff -- list                # staff accounts
+npm run staff -- add ana@example.com "Ana Lee"   # prints a new password once
+npm run staff -- reset ana@example.com           # new password, signs them out everywhere
+npm run staff -- disable ana@example.com         # blocks sign-in, signs them out everywhere
+npm run import -- --from data/garage.db --yes    # one-off: copy a local file into an empty Turso database
+```
+
+### Sign-in
+
+There is no sign-up page; staff accounts are made with `npm run staff`. Sessions last 30 days and are stored in the database (only a hash of the cookie), so signing out, a password reset or disabling an account takes effect at once. Five wrong passwords in a row lock an account for 15 minutes. Server functions and form posts must come from the site itself (CSRF check). To sign in locally, add yourself to the local file: `DATABASE_PATH=data/garage.db npm run staff -- add you@example.com "Your Name"`.
 
 ## Pages
 
@@ -57,7 +82,7 @@ Domain language lives in `GLOSSARY.md`. The business rents and sells its own car
 
 ## Database migrations
 
-`src/server/migrations.server.ts` keeps an ordered list of migrations and tracks the applied count in `PRAGMA user_version`. They run on server start, each in a transaction with a foreign-key check. Add new migrations to the end of the list; never edit one that has shipped.
+`src/server/migrations.server.ts` keeps an ordered list of migrations and tracks the applied count in `PRAGMA user_version`. They run only from `npm run migrate` (never on server start; the app refuses to run against an older schema), each as one batch with foreign keys off and a foreign-key check before it commits. Back up first (`npm run backup`). Add new migrations to the end of the list; never edit one that has shipped.
 
 ## Layout
 

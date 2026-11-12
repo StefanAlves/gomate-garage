@@ -1,6 +1,6 @@
 # Deployment: Vercel + Turso
 
-Status: draft, waiting on one decision (§ Staff sign-in)
+Status: in progress. Steps 1–4 built (branch `deployment`); steps 5–6 need the owner's Vercel, Turso and Blob accounts.
 Date: 2026-11-12
 Related: README.md, SPECs/open-questions.md
 
@@ -42,7 +42,7 @@ Vercel runs the server as serverless functions with temporary disks, so neither 
 
 ### Migrations
 
-- Stop running migrations when the server starts. On Vercel, every cold start would race to migrate the database.
+- Done. Stop running migrations when the server starts. On Vercel, every cold start would race to migrate the database.
 - Migrations run as an explicit step: `npm run migrate`, run locally against the Turso database before a deploy that needs one. Tests still migrate their in-memory database.
 - Keep tracking the schema version with `PRAGMA user_version` if Turso supports reading and setting it. Otherwise switch to a one-row `schema_version` table, seeded from `user_version` (8) during the import.
 - The existing rule stays: back up before migrating. On Turso, that means creating a branch or point-in-time copy first.
@@ -54,24 +54,24 @@ Vercel runs the server as serverless functions with temporary disks, so neither 
 - Locally, with no Blob token set, keep writing to `data/uploads/`. Both live behind one small storage interface (`put`, `get`, `delete`).
 - There are no photos yet (`data/uploads` is empty), so there's nothing to move.
 
-### Staff sign-in (decision needed)
+### Staff sign-in (decided 2026-11-12: sign-in inside the app, 3 users)
 
-The app must not go live without it. Two ways:
-
-- **A. Sign-in inside the app (recommended).** A `staff` table with name, email and a hashed password, a login page and a signed session cookie (httpOnly, secure, SameSite=Lax). Every page, server function and `/api/documents/:id` checks for a session. Accounts are created with a command-line script, so there's no public sign-up page. This also makes "recorded by" possible later. It works on Vercel's free Hobby plan.
-- **B. Vercel Deployment Protection.** Vercel asks for a sign-in before the site loads. There's no code to write, but each staff member needs a seat on a Vercel team (paid), and protecting the production URL depends on the plan. Check current Vercel pricing before choosing this.
-
-To decide: how many people will use it, and do you want A?
+- `staff` table (name, email, scrypt password hash, failed-login count, lock, disabled) and `sessions` table (migration 9).
+- A session is a random 32-byte token in an httpOnly, SameSite=Lax cookie (Secure over HTTPS), valid 30 days. Only its SHA-256 is stored, so sessions are checked against the database on every request: sign-out, password reset and disabling an account take effect at once. This replaced the `SESSION_SECRET` idea, so no secret is needed.
+- Request middleware (`src/start.ts`) protects every page, server function and API route, including `/api/documents/:id`. Without a session, pages redirect to `/login?next=…`, and everything else gets a 401. The only public paths are `/login` and `/api/login`.
+- Sign-in is a plain form post to `/api/login`, and sign-out is a post to `/api/logout`. Server functions and posts must come from the site itself (TanStack's CSRF middleware, which was not enabled before).
+- Five wrong passwords in a row lock the account for 15 minutes. An unknown email takes as long as a wrong password and gets the same message.
+- Accounts are made only with `npm run staff` (add / reset / disable / enable / list). It generates a password and prints it once.
+- Not yet: staff changing their own password in the app.
 
 ### Hosting and regions
 
 - Set the Nitro preset to `vercel`. Remove `node-server`, or keep it selectable through an environment variable for running locally with `npm start`.
-- **Region:** the app's users are in Melbourne, and every query is a round trip from the Vercel function to Turso. Put both as close together as possible: Vercel functions in `syd1`, and Turso in its nearest available region. Turso's region list could not be confirmed here (Sydney is not confirmed). Pick it in the Turso dashboard and run Vercel functions in the same or nearest region.
+- **Region:** the Turso database created through Vercel is in `aws-us-east-1`. Vercel functions run in `iad1` (Washington) by default, next to it, so the many queries per page stay fast. Staff in Australia pay one ~200 ms round trip per page instead. The alternative is to move both to Sydney (Vercel `syd1`, plus a Turso region in Sydney if Turso offers one). Either works, but never put them on different continents.
 - Node 24 runtime (matches local `v24.13.0`).
 - Environment variables, set in the Vercel dashboard and never committed:
   - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`;
   - `BLOB_READ_WRITE_TOKEN`, used only off Vercel, because on Vercel the SDK can use OIDC;
-  - `SESSION_SECRET` if option A.
 - Preview deployments use a separate Turso database (a branch or copy), never the live one.
 
 ### Moving the live data
@@ -114,3 +114,13 @@ After this, the deployed Turso database is the real one. The laptop file becomes
 - Offline use or Turso embedded replicas.
 - Custom domain setup (can be added in Vercel at any time).
 - Merging the stacked feature branches; that's done before step 5, separately.
+
+## Implementation notes (steps 1–4)
+
+- `db.server.ts`: `db.all/get/run/exec` and `inTransaction()`. The transaction is carried by AsyncLocalStorage, so every `db` call inside it joins the transaction however deep it is, and nested calls simply join the outer one. A named SQL parameter missing from the args throws, rather than crashing the libSQL driver.
+- Local dev uses the file: an explicit `DATABASE_PATH` wins over Turso settings in `.env`, and `npm run dev` sets it. On Vercel no `DATABASE_PATH` is set, so the app uses Turso.
+- Each migration runs through `client.migrate()` as one batch with foreign keys off. A guard statement fails the batch if `pragma_foreign_key_check` finds anything.
+- `scripts/` (plain Node with type stripping): `migrate`, `backup`, `import` and `staff`. `backup` and `import` copy schema and rows in one transaction, then compare row counts and check foreign keys.
+- Photos: `file-store.server.ts` uses private Vercel Blob when `BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID` is set, and the local folder otherwise.
+- Vite builds with Nitro's `vercel` preset when `VERCEL` is set (Vercel's build does this), and with `node-server` otherwise. `engines.node` is 24.x.
+- `.env` is git-ignored. The local `data/garage.db` was migrated to version 9 (backup: `data/garage.backup-before-staff-login.db`).

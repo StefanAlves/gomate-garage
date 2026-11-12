@@ -88,7 +88,7 @@ export async function setServiceInterval(carId: number, v: ServiceIntervalValues
   return 'ok'
 }
 
-type RecordFailure = 'not_found' | 'not_rental' | 'future' | 'lower_than_earlier' | 'higher_than_later'
+export type RecordFailure = 'not_found' | 'not_rental' | 'future' | 'lower_than_earlier' | 'higher_than_later'
 
 /** Checks a km reading against the car and its history, before anything is written. */
 async function checkNewReading(carId: number, readOn: string, km: number, correction: boolean, today: string): Promise<RecordFailure | null> {

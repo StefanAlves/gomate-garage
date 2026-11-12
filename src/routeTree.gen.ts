@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FleetRouteRouteImport } from './routes/fleet/route'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ApiLoginRouteImport } from './routes/api/login'
+import { Route as ApiLogoutRouteImport } from './routes/api/logout'
 import { Route as CarsIndexRouteImport } from './routes/cars/index'
 import { Route as CarsCarIdRouteImport } from './routes/cars/$carId'
 import { Route as CarsNewRouteImport } from './routes/cars/new'
@@ -41,6 +44,21 @@ const IndexRoute = IndexRouteImport.update({
 const FleetRouteRoute = FleetRouteRouteImport.update({
   id: '/fleet',
   path: '/fleet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLoginRoute = ApiLoginRouteImport.update({
+  id: '/api/login',
+  path: '/api/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLogoutRoute = ApiLogoutRouteImport.update({
+  id: '/api/logout',
+  path: '/api/logout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CarsIndexRoute = CarsIndexRouteImport.update({
@@ -152,6 +170,9 @@ const ApiDocumentsDocumentIdRoute = ApiDocumentsDocumentIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/fleet': typeof FleetRouteRouteWithChildren
+  '/login': typeof LoginRoute
+  '/api/login': typeof ApiLoginRoute
+  '/api/logout': typeof ApiLogoutRoute
   '/cars/$carId': typeof CarsCarIdRoute
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
@@ -176,6 +197,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/api/login': typeof ApiLoginRoute
+  '/api/logout': typeof ApiLogoutRoute
   '/cars/$carId': typeof CarsCarIdRoute
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
@@ -202,6 +226,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/fleet': typeof FleetRouteRouteWithChildren
+  '/login': typeof LoginRoute
+  '/api/login': typeof ApiLoginRoute
+  '/api/logout': typeof ApiLogoutRoute
   '/cars/$carId': typeof CarsCarIdRoute
   '/cars/new': typeof CarsNewRoute
   '/customers/$customerId': typeof CustomersCustomerIdRoute
@@ -229,6 +256,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/fleet'
+    | '/login'
+    | '/api/login'
+    | '/api/logout'
     | '/cars/$carId'
     | '/cars/new'
     | '/customers/$customerId'
@@ -253,6 +283,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
+    | '/api/login'
+    | '/api/logout'
     | '/cars/$carId'
     | '/cars/new'
     | '/customers/$customerId'
@@ -278,6 +311,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/fleet'
+    | '/login'
+    | '/api/login'
+    | '/api/logout'
     | '/cars/$carId'
     | '/cars/new'
     | '/customers/$customerId'
@@ -304,6 +340,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FleetRouteRoute: typeof FleetRouteRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  ApiLoginRoute: typeof ApiLoginRoute
+  ApiLogoutRoute: typeof ApiLogoutRoute
   CarsCarIdRoute: typeof CarsCarIdRoute
   CarsNewRoute: typeof CarsNewRoute
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRoute
@@ -331,6 +370,27 @@ declare module '@tanstack/react-router' {
       path: '/fleet'
       fullPath: '/fleet'
       preLoaderRoute: typeof FleetRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/login': {
+      id: '/api/login'
+      path: '/api/login'
+      fullPath: '/api/login'
+      preLoaderRoute: typeof ApiLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/logout': {
+      id: '/api/logout'
+      path: '/api/logout'
+      fullPath: '/api/logout'
+      preLoaderRoute: typeof ApiLogoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cars/': {
@@ -516,6 +576,9 @@ const FleetRouteRouteWithChildren = FleetRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FleetRouteRoute: FleetRouteRouteWithChildren,
+  LoginRoute: LoginRoute,
+  ApiLoginRoute: ApiLoginRoute,
+  ApiLogoutRoute: ApiLogoutRoute,
   CarsCarIdRoute: CarsCarIdRoute,
   CarsNewRoute: CarsNewRoute,
   CustomersCustomerIdRoute: CustomersCustomerIdRoute,

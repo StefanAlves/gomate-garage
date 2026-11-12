@@ -5,6 +5,7 @@ import {
 } from '~/lib/schemas'
 import { garageToday } from '~/lib/period'
 import * as maintenance from './maintenance.server'
+import type { RecordFailure } from './maintenance.server'
 
 // Maintenance RPCs. Same conventions as garage.functions.ts: expected failures
 // come back as { ok: false, errors } keyed by form field.
@@ -12,8 +13,6 @@ import * as maintenance from './maintenance.server'
 type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> }
 
 /** Field errors for a refused reading or service; `dateField` names the form's date input. */
-type RecordFailure = Exclude<Awaited<ReturnType<typeof maintenance.recordReading>>, { ok: true }>['reason']
-
 function readingError(reason: RecordFailure, dateField: string): Result<never> {
   switch (reason) {
     case 'not_found':
