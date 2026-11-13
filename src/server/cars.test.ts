@@ -87,24 +87,23 @@ describe('stock tab', () => {
 describe('cars list: what needs attention', () => {
   const today = '2026-11-13'
   const base = { page: 1, size: 25 as const, sort: 'urgent' as const }
-  const car = async (plate: string, rego: string | null, insurance: string | null, status = 'ready') => {
+  const car = async (plate: string, rego: string | null, status = 'ready') => {
     const id = await newCar('sale', plate, 'ready')
-    await db.run(`UPDATE cars SET rego_expiry = ?, insurance_expiry = ?, status = ? WHERE id = ?`, [rego, insurance, status, id])
+    await db.run(`UPDATE cars SET rego_expiry = ?, status = ? WHERE id = ?`, [rego, status, id])
   }
-  const fine = '2027-06-01'
 
   beforeEach(async () => {
-    await car('OK1', fine, fine)
-    await car('SOON', '2026-12-10', fine) // 27 days
-    await car('NOINS', fine, null)
-    await car('LATE', fine, '2026-11-01') // expired
-    await car('EDGE', '2026-12-13', fine) // exactly 30 days
-    await car('SOLD', '2020-01-01', null, 'sold')
+    await car('OK1', '2027-06-01')
+    await car('SOON', '2026-12-10') // 27 days
+    await car('NOREGO', null)
+    await car('LATE', '2026-11-01') // expired
+    await car('EDGE', '2026-12-13') // exactly 30 days
+    await car('SOLD', '2020-01-01', 'sold')
   })
 
   it('puts expired first, then missing dates, then expiring, then the rest by plate', async () => {
     const { items } = await listCars(base, today)
-    expect(items.map((c) => c.plate)).toEqual(['LATE', 'NOINS', 'SOON', 'EDGE', 'OK1', 'SOLD'])
+    expect(items.map((c) => c.plate)).toEqual(['LATE', 'NOREGO', 'SOON', 'EDGE', 'OK1', 'SOLD'])
   })
 
   it('counts and filters the cars that need attention, never sold ones', async () => {
@@ -112,12 +111,16 @@ describe('cars list: what needs attention', () => {
     expect(all).toMatchObject({ total: 6, attentionCount: 4 })
     const flagged = await listCars({ ...base, attention: true }, today)
     expect(flagged.total).toBe(4)
-    expect(flagged.items.map((c) => c.plate)).toEqual(['LATE', 'NOINS', 'SOON', 'EDGE'])
+    expect(flagged.items.map((c) => c.plate)).toEqual(['LATE', 'NOREGO', 'SOON', 'EDGE'])
+  })
+
+  it('ignores insurance', async () => {
+    await db.run(`UPDATE cars SET insurance_expiry = '2020-01-01' WHERE plate = 'OK1'`)
+    expect((await listCars(base, today)).attentionCount).toBe(4)
   })
 
   it('sorts by rego expiry, soonest first, with missing dates last', async () => {
-    await car('NOREGO', null, fine)
     const { items } = await listCars({ ...base, sort: 'rego_expiry' }, today)
-    expect(items.map((c) => c.plate)).toEqual(['SOLD', 'SOON', 'EDGE', 'LATE', 'NOINS', 'OK1', 'NOREGO'])
+    expect(items.map((c) => c.plate)).toEqual(['SOLD', 'LATE', 'SOON', 'EDGE', 'OK1', 'NOREGO'])
   })
 })

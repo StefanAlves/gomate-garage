@@ -1,6 +1,6 @@
 import type { CarStatus } from './schemas'
 
-/** A rego or insurance expiry within this many days needs attention. */
+/** A rego expiry within this many days needs attention. */
 export const ATTENTION_DAYS = 30
 
 /** Most urgent first. The SQL in `listCars` ranks them in this same order. */
@@ -8,9 +8,8 @@ export const EXPIRY_STATES = ['expired', 'missing', 'expiring'] as const
 export type ExpiryState = (typeof EXPIRY_STATES)[number]
 
 export interface AttentionFlag {
-  what: 'rego' | 'insurance'
   state: ExpiryState
-  /** Days from today to the expiry date: negative once expired, null when no date is recorded. */
+  /** Days from today to the rego expiry: negative once expired, null when no date is recorded. */
   days: number | null
 }
 
@@ -25,23 +24,15 @@ export function expiryState(date: string | null, today: string): ExpiryState | n
   return days <= ATTENTION_DAYS ? 'expiring' : null
 }
 
-/** What a car needs done about its rego and insurance. Sold cars are the buyer's problem. */
-export function carAttention(
-  car: { status: CarStatus; regoExpiry: string | null; insuranceExpiry: string | null },
-  today: string,
-): AttentionFlag[] {
-  if (car.status === 'sold') return []
-  const flags: AttentionFlag[] = []
-  for (const [what, date] of [['rego', car.regoExpiry], ['insurance', car.insuranceExpiry]] as const) {
-    const state = expiryState(date, today)
-    if (state) flags.push({ what, state, days: date ? daysFrom(today, date) : null })
-  }
-  return flags.sort((a, b) => EXPIRY_STATES.indexOf(a.state) - EXPIRY_STATES.indexOf(b.state))
+/** What a car needs done about its rego, or null. Sold cars are the buyer's problem. */
+export function carAttention(car: { status: CarStatus; regoExpiry: string | null }, today: string): AttentionFlag | null {
+  if (car.status === 'sold') return null
+  const state = expiryState(car.regoExpiry, today)
+  return state && { state, days: car.regoExpiry ? daysFrom(today, car.regoExpiry) : null }
 }
 
-export function attentionLabel({ what, state, days }: AttentionFlag) {
-  const name = what === 'rego' ? 'Rego' : 'Insurance'
-  if (state === 'missing') return `No ${what} date`
-  if (state === 'expired') return `${name} expired ${-days!}d ago`
-  return days === 0 ? `${name} due today` : `${name} ${days}d`
+export function attentionLabel({ state, days }: AttentionFlag) {
+  if (state === 'missing') return 'No rego date'
+  if (state === 'expired') return `Rego expired ${-days!}d ago`
+  return days === 0 ? 'Rego due today' : `Rego ${days}d`
 }

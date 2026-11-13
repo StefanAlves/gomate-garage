@@ -52,8 +52,7 @@ export interface Car {
 }
 export type CarListItem = Pick<
   Car,
-  'id' | 'purpose' | 'status' | 'plate' | 'make' | 'model' | 'variant' | 'year' | 'color' | 'regoExpiry' | 'insuranceExpiry'
-  | 'createdAt'
+  'id' | 'purpose' | 'status' | 'plate' | 'make' | 'model' | 'variant' | 'year' | 'color' | 'regoExpiry' | 'createdAt'
 >
 
 type Row = Omit<Car, 'ppsrChecked' | 'writtenOff' | 'features'> & {
@@ -74,16 +73,12 @@ const toParams = (v: CarValues | NewCarValues): Args =>
 const from = `FROM cars car`
 
 const listColumns = `car.id, car.purpose, car.status, car.plate, car.make, car.model, car.variant, car.year, car.color,
-  car.rego_expiry AS regoExpiry, car.insurance_expiry AS insuranceExpiry, car.created_at AS createdAt`
+  car.rego_expiry AS regoExpiry, car.created_at AS createdAt`
 
-// How urgently one expiry needs attention, matching `carAttention` in ~/lib/attention:
+// How urgently the rego needs attention, matching `carAttention` in ~/lib/attention:
 // 0 expired, 1 no date recorded, 2 expires within ATTENTION_DAYS, NULL fine. Sold cars are never flagged.
-const expiryRank = (column: string) =>
-  `CASE WHEN car.status = 'sold' THEN NULL WHEN ${column} IS NULL THEN 1 WHEN ${column} < :today THEN 0
-     WHEN ${column} <= :soon THEN 2 END`
-/** The car's most urgent flag, or NULL when nothing needs doing. */
-const urgency = `nullif(min(coalesce(${expiryRank('car.rego_expiry')}, 9), coalesce(${expiryRank('car.insurance_expiry')}, 9)), 9)`
-const earliestExpiry = `min(coalesce(car.rego_expiry, '9999-12-31'), coalesce(car.insurance_expiry, '9999-12-31'))`
+const urgency = `CASE WHEN car.status = 'sold' THEN NULL WHEN car.rego_expiry IS NULL THEN 1
+  WHEN car.rego_expiry < :today THEN 0 WHEN car.rego_expiry <= :soon THEN 2 END`
 
 const allColumns = `car.id, car.purpose, car.status,
   car.plate, car.make, car.model, car.variant, car.year, car.color, car.vin, car.engine_number AS engineNumber,
@@ -99,7 +94,7 @@ const allColumns = `car.id, car.purpose, car.status,
 
 const orderBy = {
   // Flagged cars by their earliest date; cars with nothing to do by plate.
-  urgent: `urgency IS NULL, urgency, CASE WHEN urgency IS NOT NULL THEN ${earliestExpiry} END, car.plate COLLATE NOCASE`,
+  urgent: 'urgency IS NULL, urgency, CASE WHEN urgency IS NOT NULL THEN car.rego_expiry END, car.plate COLLATE NOCASE',
   rego_expiry: 'car.rego_expiry IS NULL, car.rego_expiry, car.plate COLLATE NOCASE',
   plate: 'car.plate COLLATE NOCASE',
   recent: 'car.created_at DESC, car.id DESC',

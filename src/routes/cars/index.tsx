@@ -1,7 +1,7 @@
 import { Link, createFileRoute, stripSearchParams } from '@tanstack/react-router'
 import { CAR_PURPOSES, CAR_STATUSES, carListSearchDefaults, carListSearchSchema } from '~/lib/schemas'
 import { carName, carPurposeLabel, carStatusLabel, formatDate } from '~/lib/format'
-import { attentionLabel, carAttention, expiryState } from '~/lib/attention'
+import { attentionLabel, carAttention, expiryState, type AttentionFlag } from '~/lib/attention'
 import { listCars } from '~/server/garage.functions'
 import { Pager, ParamSelect, SearchBox, useSetSearch } from '~/components/list-toolbar'
 
@@ -96,11 +96,7 @@ function CarList() {
                     <span className={`badge status-${car.status}`} title={carName(car)}>{carStatusLabel[car.status]}</span>
                   </td>
                   <td>
-                    <span className="row tight wrap">
-                      {carAttention(car, today).map((flag) => (
-                        <span key={flag.what} className={`badge attention expiry-${flag.state}`}>{attentionLabel(flag)}</span>
-                      ))}
-                    </span>
+                    <AttentionChip flag={carAttention(car, today)} />
                   </td>
                 </tr>
               ))}
@@ -111,4 +107,9 @@ function CarList() {
       <Pager from="/cars/" page={page} pageCount={pageCount} shown={items.length} total={total} size={size} />
     </div>
   )
+}
+
+function AttentionChip({ flag }: { flag: AttentionFlag | null }) {
+  if (!flag) return null
+  return <span className={`badge attention expiry-${flag.state}`}>{attentionLabel(flag)}</span>
 }
