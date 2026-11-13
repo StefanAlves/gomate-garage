@@ -225,3 +225,9 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .login h1 { margin: 0; font-size: 1.6rem; }
 .login p { margin: 0; }
 .login input { width: 100%; box-sizing: border-box; }
+
+/* Rego and insurance expiry on the cars list (see ~/lib/attention). */
+.expiry-expired { color: var(--urgent); }
+.expiry-expiring { color: #c26a00; }
+.expiry-missing, .expiry-none { color: var(--muted); }
+.badge.attention { text-transform: none; }

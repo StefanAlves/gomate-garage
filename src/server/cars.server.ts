@@ -1,6 +1,7 @@
 import '@tanstack/react-start/server-only'
 import { db, inTransaction, likePattern, sqlNow, toCents, type Args } from './db.server'
-import { garageToday } from '~/lib/period'
+import { addDays, garageToday } from '~/lib/period'
+import { ATTENTION_DAYS } from '~/lib/attention'
 import { totalsColumns, withPnl, type Totals } from './transactions.server'
 import { MANUAL_CAR_STATUSES } from '~/lib/schemas'
 import type {
@@ -51,7 +52,8 @@ export interface Car {
 }
 export type CarListItem = Pick<
   Car,
-  'id' | 'purpose' | 'status' | 'plate' | 'make' | 'model' | 'variant' | 'year' | 'color' | 'createdAt'
+  'id' | 'purpose' | 'status' | 'plate' | 'make' | 'model' | 'variant' | 'year' | 'color' | 'regoExpiry' | 'insuranceExpiry'
+  | 'createdAt'
 >
 
 type Row = Omit<Car, 'ppsrChecked' | 'writtenOff' | 'features'> & {
@@ -72,7 +74,16 @@ const toParams = (v: CarValues | NewCarValues): Args =>
 const from = `FROM cars car`
 
 const listColumns = `car.id, car.purpose, car.status, car.plate, car.make, car.model, car.variant, car.year, car.color,
-  car.created_at AS createdAt`
+  car.rego_expiry AS regoExpiry, car.insurance_expiry AS insuranceExpiry, car.created_at AS createdAt`
+
+// How urgently one expiry needs attention, matching `carAttention` in ~/lib/attention:
+// 0 expired, 1 no date recorded, 2 expires within ATTENTION_DAYS, NULL fine. Sold cars are never flagged.
+const expiryRank = (column: string) =>
+  `CASE WHEN car.status = 'sold' THEN NULL WHEN ${column} IS NULL THEN 1 WHEN ${column} < :today THEN 0
+     WHEN ${column} <= :soon THEN 2 END`
+/** The car's most urgent flag, or NULL when nothing needs doing. */
+const urgency = `nullif(min(coalesce(${expiryRank('car.rego_expiry')}, 9), coalesce(${expiryRank('car.insurance_expiry')}, 9)), 9)`
+const earliestExpiry = `min(coalesce(car.rego_expiry, '9999-12-31'), coalesce(car.insurance_expiry, '9999-12-31'))`
 
 const allColumns = `car.id, car.purpose, car.status,
   car.plate, car.make, car.model, car.variant, car.year, car.color, car.vin, car.engine_number AS engineNumber,
@@ -87,15 +98,20 @@ const allColumns = `car.id, car.purpose, car.status,
   car.created_at AS createdAt, car.updated_at AS updatedAt`
 
 const orderBy = {
+  // Flagged cars by their earliest date; cars with nothing to do by plate.
+  urgent: `urgency IS NULL, urgency, CASE WHEN urgency IS NOT NULL THEN ${earliestExpiry} END, car.plate COLLATE NOCASE`,
+  rego_expiry: 'car.rego_expiry IS NULL, car.rego_expiry, car.plate COLLATE NOCASE',
+  plate: 'car.plate COLLATE NOCASE',
   recent: 'car.created_at DESC, car.id DESC',
-  oldest: 'car.created_at ASC, car.id ASC',
   make_asc: 'car.make COLLATE NOCASE ASC, car.model COLLATE NOCASE ASC, car.year DESC',
-  make_desc: 'car.make COLLATE NOCASE DESC, car.model COLLATE NOCASE DESC, car.year DESC',
-} as const
+} as const satisfies Record<z.output<typeof carListSearchSchema>['sort'], string>
 
-export async function listCars({ q, page, size, sort, purpose, status }: z.output<typeof carListSearchSchema>) {
+export async function listCars(
+  { q, page, size, sort, purpose, status, attention }: z.output<typeof carListSearchSchema>,
+  today = garageToday(),
+) {
   const conditions: string[] = []
-  const params: Record<string, string | number> = {}
+  const params: Record<string, string | number> = { today, soon: addDays(today, ATTENTION_DAYS) }
   const like = likePattern(q)
   if (like) {
     conditions.push(`(car.plate LIKE :like ESCAPE '\\' OR car.make LIKE :like ESCAPE '\\' OR car.model LIKE :like ESCAPE '\\'
@@ -110,15 +126,23 @@ export async function listCars({ q, page, size, sort, purpose, status }: z.outpu
     conditions.push('car.status = :status')
     params.status = status
   }
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
-  const { total } = (await db.get<{ total: number }>(`SELECT COUNT(*) AS total ${from} ${where}`, params))!
+  const where = (extra: string[] = []) => {
+    const all = [...conditions, ...extra]
+    return all.length ? `WHERE ${all.join(' AND ')}` : ''
+  }
+  // `attentionCount` ignores the attention filter so the heading can offer it.
+  const counts = (await db.get<{ total: number; attentionCount: number }>(
+    `SELECT COUNT(*) AS total, COUNT(${urgency}) AS attentionCount ${from} ${where()}`, params,
+  ))!
+  const total = attention ? counts.attentionCount : counts.total
   const pageCount = Math.max(1, Math.ceil(total / size))
   const current = Math.min(page, pageCount)
   const items = await db.all<CarListItem>(
-    `SELECT ${listColumns} ${from} ${where} ORDER BY ${orderBy[sort]} LIMIT :limit OFFSET :offset`,
+    `SELECT ${listColumns}, ${urgency} AS urgency ${from} ${where(attention ? [`${urgency} IS NOT NULL`] : [])}
+     ORDER BY ${orderBy[sort]} LIMIT :limit OFFSET :offset`,
     { ...params, limit: size, offset: (current - 1) * size },
   )
-  return { items, total, page: current, pageCount }
+  return { items, total, attentionCount: counts.attentionCount, page: current, pageCount, today }
 }
 
 export async function getCar(id: number) {

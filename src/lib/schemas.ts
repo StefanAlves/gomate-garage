@@ -385,12 +385,14 @@ export const customerListSearchSchema = z.object({
 })
 export const customerListSearchDefaults = customerListSearchSchema.parse({})
 
-export const CAR_SORTS = ['recent', 'oldest', 'make_asc', 'make_desc'] as const
+export const CAR_SORTS = ['urgent', 'rego_expiry', 'plate', 'recent', 'make_asc'] as const
 export const carListSearchSchema = z.object({
   ...pageSearch,
-  sort: z.enum(CAR_SORTS).default('recent').catch('recent'),
+  sort: z.enum(CAR_SORTS).default('urgent').catch('urgent'),
   purpose: z.enum(CAR_PURPOSES).optional().catch(undefined),
   status: z.enum(CAR_STATUSES).optional().catch(undefined),
+  /** Only cars whose rego or insurance has expired, is missing or expires within 30 days. */
+  attention: z.boolean().optional().catch(undefined),
 })
 export const carListSearchDefaults = carListSearchSchema.parse({})
 
