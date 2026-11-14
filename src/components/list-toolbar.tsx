@@ -1,6 +1,9 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { PAGE_SIZES } from '~/lib/schemas'
+import { Link } from '~/components/ui/link'
+import { SearchField } from '~/components/ui/search-field'
+import { Select } from '~/components/ui/select'
 
 // The URL is the state for every list control: search, sort, filters, page.
 // Changing anything except the page resets to page 1.
@@ -24,19 +27,13 @@ export function SearchBox({ from, q, placeholder }: { from: ListRoute; q?: strin
     const t = setTimeout(() => setSearch({ q: value || undefined }), 250)
     return () => clearTimeout(t)
   }, [value, q]) // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <input
-      type="search"
-      className="grow"
-      aria-label="Search"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-    />
-  )
+  return <SearchField aria-label="Search" placeholder={placeholder} value={value} onChange={setValue} />
 }
 
-/** A <select> bound to one search param. `options` are [value, label]; "" clears the param. */
+// React Aria option ids can't be empty, so "" (no filter) travels as this id.
+const NONE = '__none__'
+
+/** A React Aria Select bound to one search param. `options` are [value, label]; "" clears the param. */
 export function ParamSelect({
   from,
   param,
@@ -52,11 +49,12 @@ export function ParamSelect({
 }) {
   const setSearch = useSetSearch(from)
   return (
-    <select aria-label={label} value={value} onChange={(e) => setSearch({ [param]: e.target.value || undefined })}>
-      {options.map(([v, text]) => (
-        <option key={v} value={v}>{text}</option>
-      ))}
-    </select>
+    <Select
+      label={label}
+      value={value || NONE}
+      options={options.map(([v, text]) => [v || NONE, text] as const)}
+      onChange={(id) => setSearch({ [param]: id === NONE ? undefined : id })}
+    />
   )
 }
 

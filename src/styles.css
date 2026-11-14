@@ -240,3 +240,52 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 main :is(.table-wrap, .list, .board, .tiles, .panel) { transition: opacity .15s; }
 main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity: .55; }
 @media (prefers-reduced-motion: reduce) { .nav-progress::before { animation: none; width: 100%; opacity: .6; } }
+
+/* React Aria controls (src/components/ui). RAC exposes state as data-*
+   attributes. These override the global button/input rules above. */
+.search-field { position: relative; display: flex; flex: 1 1 220px; }
+.search-field input { flex: 1; min-width: 0; padding-right: 2rem; }
+.search-field input::-webkit-search-cancel-button { display: none; }
+.search-clear {
+  position: absolute; right: .35rem; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 1.5rem; height: 1.5rem; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+}
+.search-clear[data-hovered] { background: var(--bg); color: var(--text); }
+.search-clear svg { width: .7rem; height: .7rem; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.search-field[data-empty] .search-clear { display: none; }
+
+.select-trigger {
+  display: inline-flex; align-items: center; gap: .5rem; font-weight: 400;
+  padding: .5rem .75rem; border-radius: var(--radii-md); border: 1px solid var(--border);
+  background: var(--panel); color: var(--text); white-space: nowrap;
+}
+.select-trigger[data-hovered] { border-color: var(--colors-gray-300); }
+.select-chevron { width: .75rem; height: .75rem; fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.select-popover {
+  min-width: var(--trigger-width); max-height: 20rem; overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radii-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .1);
+}
+.select-list { padding: .25rem; outline: none; }
+.select-option { padding: .4rem .65rem; border-radius: var(--radii-sm); cursor: pointer; outline: none; white-space: nowrap; }
+.select-option[data-focused] { background: var(--bg); }
+.select-option[data-selected] { font-weight: 600; color: var(--accent); }
+
+.checkbox-button { display: inline-flex; align-items: center; gap: .45rem; font-size: .875rem; cursor: pointer; }
+.checkbox-box {
+  display: grid; place-items: center; width: 1.1rem; height: 1.1rem; flex: none;
+  border: 1.5px solid var(--colors-gray-400); border-radius: 4px; background: var(--panel);
+  transition: background .15s, border-color .15s;
+}
+.checkbox-box svg { width: .8rem; height: .8rem; fill: none; stroke: var(--accent-text); stroke-width: 2.5; stroke-dasharray: 22; stroke-dashoffset: 22; transition: stroke-dashoffset .15s; }
+.checkbox-button[data-selected] .checkbox-box { background: var(--accent); border-color: var(--accent); }
+.checkbox-button[data-selected] .checkbox-box svg { stroke-dashoffset: 0; }
+
+:is(.select-trigger, .search-field input, .search-clear, .checkbox-button, .data-table [role='row'], .data-table [role='rowheader'], .data-table [role='gridcell'])[data-focus-visible],
+.checkbox-button[data-focus-visible] .checkbox-box {
+  outline: 2px solid var(--colors-ring); outline-offset: 2px;
+}
+.search-field input[data-focused] { outline: none; border-color: var(--colors-gray-400); }
+.data-table [role='row'], .data-table [role='rowheader'], .data-table [role='gridcell'] { outline: none; }
+.data-table [role='row'][data-focus-visible] { outline-offset: -2px; }

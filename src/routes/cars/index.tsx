@@ -1,9 +1,12 @@
-import { Link, createFileRoute, stripSearchParams } from '@tanstack/react-router'
+import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from 'react-aria-components/Table'
 import { CAR_PURPOSES, CAR_STATUSES, carListSearchDefaults, carListSearchSchema } from '~/lib/schemas'
 import { carName, carPurposeLabel, carStatusLabel, formatDate } from '~/lib/format'
 import { attentionLabel, carAttention, expiryState, type AttentionFlag } from '~/lib/attention'
 import { listCars } from '~/server/garage.functions'
 import { Pager, ParamSelect, SearchBox, useSetSearch } from '~/components/list-toolbar'
+import { Checkbox } from '~/components/ui/checkbox'
+import { Link } from '~/components/ui/link'
 
 export const Route = createFileRoute('/cars/')({
   validateSearch: carListSearchSchema,
@@ -52,10 +55,9 @@ function CarList() {
         <ParamSelect from="/cars/" param="sort" label="Sort" value={sort} options={sortOptions} />
         <ParamSelect from="/cars/" param="purpose" label="Purpose" value={purpose ?? ''} options={purposeOptions} />
         <ParamSelect from="/cars/" param="status" label="Status" value={status ?? ''} options={statusOptions} />
-        <label className="row tight small">
-          <input type="checkbox" checked={!!attention} onChange={(e) => setSearch({ attention: e.target.checked || undefined })} />
+        <Checkbox isSelected={!!attention} onChange={(checked) => setSearch({ attention: checked || undefined })}>
           Needs attention only
-        </label>
+        </Checkbox>
       </div>
       {items.length === 0 ? (
         <div className="panel muted">
@@ -63,46 +65,44 @@ function CarList() {
         </div>
       ) : (
         <div className="table-wrap panel flush">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Vehicle</th>
-                <th>Rego</th>
-                <th className="hide-narrow">Colour</th>
-                <th className="hide-narrow">Purpose</th>
-                <th>Status</th>
-                <th>Needs attention</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table aria-label="Cars" className="data-table">
+            <TableHeader>
+              <Column isRowHeader>Vehicle</Column>
+              <Column>Rego</Column>
+              <Column className="hide-narrow">Colour</Column>
+              <Column className="hide-narrow">Purpose</Column>
+              <Column>Status</Column>
+              <Column>Needs attention</Column>
+            </TableHeader>
+            <TableBody>
               {items.map((car) => (
-                <tr key={car.id}>
-                  <td>
+                <Row key={car.id} id={car.id}>
+                  <Cell>
                     <Link to="/cars/$carId" params={{ carId: String(car.id) }}>
                       <strong>{car.year ? `${car.year} ` : ''}{car.make}</strong>
                       <span className="muted small block">{car.model}{car.variant ? ` ${car.variant}` : ''}</span>
                     </Link>
-                  </td>
-                  <td>
+                  </Cell>
+                  <Cell>
                     <span className="plate">{car.plate}</span>
                     {car.regoExpiry && (
                       <span className={`small block expiry-${car.status === 'sold' ? 'none' : expiryState(car.regoExpiry, today) ?? 'none'}`}>
                         {formatDate(car.regoExpiry)}
                       </span>
                     )}
-                  </td>
-                  <td className="hide-narrow">{car.color ?? <span className="muted">—</span>}</td>
-                  <td className="hide-narrow"><span className={`badge purpose-${car.purpose}`}>{carPurposeLabel[car.purpose]}</span></td>
-                  <td>
+                  </Cell>
+                  <Cell className="hide-narrow">{car.color ?? <span className="muted">—</span>}</Cell>
+                  <Cell className="hide-narrow"><span className={`badge purpose-${car.purpose}`}>{carPurposeLabel[car.purpose]}</span></Cell>
+                  <Cell>
                     <span className={`badge status-${car.status}`} title={carName(car)}>{carStatusLabel[car.status]}</span>
-                  </td>
-                  <td>
+                  </Cell>
+                  <Cell>
                     <AttentionChip flag={carAttention(car, today)} />
-                  </td>
-                </tr>
+                  </Cell>
+                </Row>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       <Pager from="/cars/" page={page} pageCount={pageCount} shown={items.length} total={total} size={size} />

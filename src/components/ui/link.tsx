@@ -8,10 +8,12 @@ import { link } from 'styled-system/recipes'
  * client-side navigation and intent preloading, plus React Aria's press,
  * hover and focus-visible handling (exposed as data-* attributes).
  */
-function AriaLinkComponent({ className, ...props }: AriaLinkProps) {
+function AriaLinkComponent({ className, disabled, ...props }: AriaLinkProps & { disabled?: boolean }) {
   return (
     <AriaLink
       {...props}
+      // The router passes `disabled` (e.g. a pager link with no next page).
+      isDisabled={disabled || props.isDisabled}
       className={
         typeof className === 'function'
           ? (state) => cx(link(), className(state))
