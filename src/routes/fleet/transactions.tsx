@@ -17,6 +17,7 @@ import { Pager, ParamSelect, SearchBox } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/transactions')({
   validateSearch: transactionListSearchSchema,
   search: { middlewares: [stripSearchParams(transactionListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: async ({ deps }) => {
     const [data, options] = await Promise.all([listTransactions({ data: deps }), listPickerOptions()])

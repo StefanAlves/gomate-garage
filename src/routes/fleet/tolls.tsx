@@ -7,6 +7,7 @@ import { ChargesPage } from '~/components/charges-page'
 export const Route = createFileRoute('/fleet/tolls')({
   validateSearch: chargeListSearchSchema,
   search: { middlewares: [stripSearchParams(chargeListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: async ({ deps }) => {
     const [data, options] = await Promise.all([listCharges({ data: { ...deps, kind: 'toll' } }), listPickerOptions()])

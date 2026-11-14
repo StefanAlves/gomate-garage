@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import { HeadContent, Link, Outlet, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import { getCurrentStaff } from '~/server/auth.functions'
 import appCss from '~/styles.css?url'
 
@@ -47,10 +47,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 
 function RootLayout() {
   const staff = Route.useLoaderData()
+  const loading = useRouterState({ select: (s) => s.isLoading })
+  // Same page, new search params (filters, sort, page): dim the old results.
+  const refreshing = useRouterState({
+    select: (s) => s.isLoading && s.location.pathname === s.resolvedLocation?.pathname,
+  })
   // The sign-in page has no navigation: nothing behind it is reachable yet.
   if (!staff) return <main><Outlet /></main>
   return (
     <>
+      {loading && <div className="nav-progress" role="progressbar" aria-label="Loading" />}
       <header className="topbar">
         <Link to="/" className="brand">Garage</Link>
         <nav>
@@ -63,7 +69,7 @@ function RootLayout() {
           <button type="submit" className="ghost small">Sign out</button>
         </form>
       </header>
-      <main>
+      <main aria-busy={refreshing || undefined}>
         <Outlet />
       </main>
     </>

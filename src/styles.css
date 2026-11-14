@@ -231,3 +231,12 @@ label[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .expiry-expiring { color: #c26a00; }
 .expiry-missing, .expiry-none { color: var(--muted); }
 .badge.attention { text-transform: none; }
+
+/* Navigation feedback: a thin bar while the next page or result set loads,
+   and the current results dimmed (not removed) while filters reload them. */
+.nav-progress { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 100; overflow: hidden; pointer-events: none; }
+.nav-progress::before { content: ''; position: absolute; inset: 0; width: 40%; background: var(--accent); animation: nav-progress 1s ease-in-out infinite; }
+@keyframes nav-progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+main :is(.table-wrap, .list, .board, .tiles, .panel) { transition: opacity .15s; }
+main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity: .55; }
+@media (prefers-reduced-motion: reduce) { .nav-progress::before { animation: none; width: 100%; opacity: .6; } }

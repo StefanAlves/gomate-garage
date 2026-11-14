@@ -10,6 +10,7 @@ import { ParamSelect, SearchBox } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/stock')({
   validateSearch: stockSearchSchema,
   search: { middlewares: [stripSearchParams(stockSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search: { purpose, sort, q } }) => ({ purpose, sort, q }),
   loader: ({ deps }) => listStock({ data: { ...stockSearchDefaults, ...deps } }),
   head: () => ({ meta: [{ title: 'Stock · Garage' }] }),

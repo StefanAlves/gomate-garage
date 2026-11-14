@@ -8,6 +8,7 @@ import { ParamSelect, SearchBox } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/rentals')({
   validateSearch: rentalListSearchSchema,
   search: { middlewares: [stripSearchParams(rentalListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => listRentals({ data: deps }),
   head: () => ({ meta: [{ title: 'Rentals · Garage' }] }),

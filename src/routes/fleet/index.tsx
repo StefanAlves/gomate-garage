@@ -8,6 +8,7 @@ import { ParamSelect } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/')({
   validateSearch: overviewSearchSchema,
   search: { middlewares: [stripSearchParams({ period: 'all' })] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => getFleetOverview({ data: deps }),
   head: () => ({ meta: [{ title: 'Fleet overview · Garage' }] }),

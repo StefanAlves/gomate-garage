@@ -9,6 +9,7 @@ import { ParamSelect } from '~/components/list-toolbar'
 export const Route = createFileRoute('/fleet/maintenance')({
   validateSearch: maintenanceListSearchSchema,
   search: { middlewares: [stripSearchParams(maintenanceListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => listMaintenance({ data: deps }),
   head: () => ({ meta: [{ title: 'Maintenance · Garage' }] }),

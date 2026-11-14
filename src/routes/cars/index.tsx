@@ -8,6 +8,7 @@ import { Pager, ParamSelect, SearchBox, useSetSearch } from '~/components/list-t
 export const Route = createFileRoute('/cars/')({
   validateSearch: carListSearchSchema,
   search: { middlewares: [stripSearchParams(carListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => listCars({ data: deps }),
   head: () => ({ meta: [{ title: 'Cars · Garage' }] }),

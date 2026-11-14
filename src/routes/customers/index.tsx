@@ -7,6 +7,7 @@ import { Pager, ParamSelect, SearchBox } from '~/components/list-toolbar'
 export const Route = createFileRoute('/customers/')({
   validateSearch: customerListSearchSchema,
   search: { middlewares: [stripSearchParams(customerListSearchDefaults)] },
+  pendingMs: Infinity, // keep the current results on screen while a filter change loads
   loaderDeps: ({ search }) => search,
   loader: ({ deps }) => listCustomers({ data: deps }),
   head: () => ({ meta: [{ title: 'Customers · Garage' }] }),
