@@ -84,7 +84,7 @@ export function CarForm({
   const upper = { textTransform: 'uppercase' } as const
 
   return (
-    <form className="stack form" onSubmit={handle} noValidate>
+    <form className="stack form section-cards" onSubmit={handle} noValidate>
       {compact && (
         <FormSection title="Purpose" description="Every car is kept for renting or for selling. This can't be changed later.">
           <form.AppField name="purpose">

@@ -301,3 +301,11 @@ main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity
 .form .checkbox { display: flex; align-items: center; }
 .form label.checkbox-button { flex-direction: row; align-items: center; gap: .5rem; font-size: inherit; }
 .check-group label.group-label { font-weight: 500; }
+
+/* Car forms: each section is its own card, titled by its legend. */
+.section-cards .form-section {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radii-lg); padding: 1.25rem;
+}
+.section-cards .form-section + .form-section { border-top: 1px solid var(--border); padding-top: 1.25rem; }
+/* Same look as the h2 titles of the page's other cards (e.g. Compliance). */
+.section-cards .form-section legend { font-size: 1.05rem; }

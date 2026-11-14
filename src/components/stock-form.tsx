@@ -38,7 +38,7 @@ export function StockForm({
   })
 
   return (
-    <form className="stack form" onSubmit={handle} noValidate>
+    <form className="stack form section-cards" onSubmit={handle} noValidate>
       <FormSection title="Status">
         {manual ? (
           <form.AppField name="status">

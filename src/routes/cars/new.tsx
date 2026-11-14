@@ -12,7 +12,7 @@ function NewCar() {
   const navigate = useNavigate()
   const create = useServerFn(createCar)
   return (
-    <div className="panel stack">
+    <div className="stack">
       <h1>New car</h1>
       <p className="muted small">Full specifications, maintenance, rego and insurance details can be added on the car page afterwards.</p>
       <CarForm

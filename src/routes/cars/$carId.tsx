@@ -340,7 +340,7 @@ function SpecsTab() {
   const [deleteError, setDeleteError] = useState<string>()
 
   return (
-    <section className="panel stack">
+    <div className="stack">
       {saved && <p className="notice" role="status">Saved.</p>}
       <CarForm
         key={car.updatedAt}
@@ -363,7 +363,7 @@ function SpecsTab() {
         />
       </CarForm>
       <FormError error={deleteError} />
-    </section>
+    </div>
   )
 }
 
@@ -376,7 +376,7 @@ function StockTab() {
 
   return (
     <div className="two-col wide-left">
-      <section className="panel stack">
+      <div className="stack">
         {saved && <p className="notice" role="status">Saved.</p>}
         <StockForm
           key={car.updatedAt}
@@ -387,7 +387,7 @@ function StockTab() {
             setSaved(true)
           }}
         />
-      </section>
+      </div>
       <div className="stack">
         <section className="panel stack">
           <div className="row between">
