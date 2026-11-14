@@ -1,4 +1,5 @@
-import { Link } from '@tanstack/react-router'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from 'react-aria-components/Table'
+import { Link } from '~/components/ui/link'
 import { financeStatusLabel, formatDate, formatMoney } from '~/lib/format'
 import type { FinanceSaleWithSummary } from '~/server/finance.server'
 
@@ -23,52 +24,50 @@ export function ArrearsCell({ sale }: { sale: Pick<FinanceSaleWithSummary, 'arre
 export function FinanceTable({ sales, hide }: { sales: FinanceSaleWithSummary[]; hide?: 'customer' | 'car' }) {
   return (
     <div className="table-wrap">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {hide !== 'customer' && <th>Customer</th>}
-            {hide !== 'car' && <th>Car</th>}
-            <th>Agreed</th>
-            <th className="num hide-narrow">Price</th>
-            <th className="num">Balance</th>
-            <th className="num">Arrears</th>
-            <th className="hide-narrow">Next due</th>
-            <th>Status</th>
-            <th aria-label="Open" />
-          </tr>
-        </thead>
-        <tbody>
+      <Table className="data-table" aria-label="Finance sales">
+        <TableHeader>
+            {hide !== 'customer' && <Column>Customer</Column>}
+            {hide !== 'car' && <Column>Car</Column>}
+            <Column>Agreed</Column>
+            <Column className="num hide-narrow">Price</Column>
+            <Column className="num">Balance</Column>
+            <Column className="num">Arrears</Column>
+            <Column className="hide-narrow">Next due</Column>
+            <Column>Status</Column>
+            <Column aria-label="Open" />
+          </TableHeader>
+        <TableBody>
           {sales.map((f) => (
-            <tr key={f.id}>
+            <Row key={f.id} id={f.id}>
               {hide !== 'customer' && (
-                <td>
+                <Cell>
                   <Link to="/customers/$customerId" params={{ customerId: String(f.customerId) }} search={{ tab: 'finance' }}>
                     {f.customerName}
                   </Link>
                   <div className="muted small">{f.customerPhone}</div>
-                </td>
+                </Cell>
               )}
               {hide !== 'car' && (
-                <td>
+                <Cell>
                   <Link to="/cars/$carId" params={{ carId: String(f.carId) }} search={{ tab: 'finance' }}>
                     {f.carName} <span className="plate">{f.carPlate}</span>
                   </Link>
-                </td>
+                </Cell>
               )}
-              <td>
+              <Cell>
                 {formatDate(f.agreedOn)}
                 {f.closedOn && <div className="muted small">closed {formatDate(f.closedOn)}</div>}
-              </td>
-              <td className="num hide-narrow">{formatMoney(f.priceCents)}</td>
-              <td className="num">{formatMoney(f.balanceCents)}</td>
-              <td className="num"><ArrearsCell sale={f} /></td>
-              <td className="hide-narrow">{f.nextDueOn ? formatDate(f.nextDueOn) : '—'}</td>
-              <td><FinanceStatusBadge status={f.status} /></td>
-              <td><Link to="/finance-sales/$saleId" params={{ saleId: String(f.id) }} className="small">Open →</Link></td>
-            </tr>
+              </Cell>
+              <Cell className="num hide-narrow">{formatMoney(f.priceCents)}</Cell>
+              <Cell className="num">{formatMoney(f.balanceCents)}</Cell>
+              <Cell className="num"><ArrearsCell sale={f} /></Cell>
+              <Cell className="hide-narrow">{f.nextDueOn ? formatDate(f.nextDueOn) : '—'}</Cell>
+              <Cell><FinanceStatusBadge status={f.status} /></Cell>
+              <Cell><Link to="/finance-sales/$saleId" params={{ saleId: String(f.id) }} className="small">Open →</Link></Cell>
+            </Row>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

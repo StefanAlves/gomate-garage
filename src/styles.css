@@ -289,3 +289,15 @@ main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity
 .search-field input[data-focused] { outline: none; border-color: var(--colors-gray-400); }
 .data-table [role='row'], .data-table [role='rowheader'], .data-table [role='gridcell'] { outline: none; }
 .data-table [role='row'][data-focus-visible] { outline-offset: -2px; }
+
+/* React Aria form fields (form.tsx). A field is a div holding a <label>,
+   the control and its error, laid out like the old wrapping <label>. */
+.form .field { display: flex; flex-direction: column; gap: .3rem; font-weight: 500; min-width: 0; }
+.form .field textarea { resize: vertical; }
+.form textarea[aria-invalid='true'], .form .select[data-invalid] .select-trigger { border-color: var(--urgent); }
+.form .select-trigger { width: 100%; justify-content: space-between; }
+.select-value { overflow: hidden; text-overflow: ellipsis; }
+.select-value[data-placeholder] { color: var(--muted); }
+.form .checkbox { display: flex; align-items: center; }
+.form label.checkbox-button { flex-direction: row; align-items: center; gap: .5rem; font-size: inherit; }
+.check-group label.group-label { font-weight: 500; }

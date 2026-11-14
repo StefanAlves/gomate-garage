@@ -1,4 +1,5 @@
 import { useServerFn } from '@tanstack/react-start'
+import { Button } from 'react-aria-components/Button'
 import type { MaintenanceDue, MaintenanceState } from '~/lib/maintenance'
 import { odometerReadingInputSchema, serviceInputSchema, serviceIntervalInputSchema } from '~/lib/schemas'
 import {
@@ -74,7 +75,7 @@ export function ReadingForm({ carId, today, onDone, onCancel }: { carId: number;
         <FormError error={formError} />
         <div className="row">
           <form.AppForm><form.SubmitButton label="Save reading" /></form.AppForm>
-          <button type="button" className="ghost" onClick={onCancel}>Cancel</button>
+          <Button className="ghost" onPress={onCancel}>Cancel</Button>
         </div>
       </div>
     </form>
@@ -109,7 +110,7 @@ export function ServiceForm({ carId, today, km, onDone, onCancel }: {
         <FormError error={formError} />
         <div className="row">
           <form.AppForm><form.SubmitButton label="Save service" /></form.AppForm>
-          <button type="button" className="ghost" onClick={onCancel}>Cancel</button>
+          <Button className="ghost" onPress={onCancel}>Cancel</Button>
         </div>
       </div>
     </form>
@@ -139,7 +140,7 @@ export function IntervalForm({ carId, interval, onDone, onCancel }: {
         <FormError error={formError} />
         <div className="row">
           <form.AppForm><form.SubmitButton label="Save interval" /></form.AppForm>
-          {onCancel && <button type="button" className="ghost" onClick={onCancel}>Cancel</button>}
+          {onCancel && <Button className="ghost" onPress={onCancel}>Cancel</Button>}
         </div>
       </div>
     </form>

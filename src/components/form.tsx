@@ -2,7 +2,12 @@ import { useState } from 'react'
 import { createFormHook, createFormHookContexts, revalidateLogic, useStore } from '@tanstack/react-form'
 import type { AnyFieldApi } from '@tanstack/react-form'
 import type { z } from 'zod'
+import { Button } from 'react-aria-components/Button'
+import { CheckboxGroup } from 'react-aria-components/CheckboxGroup'
+import { FieldError, Input, Label, TextArea, TextField as AriaTextField } from 'react-aria-components/TextField'
 import { fieldErrors } from '~/lib/schemas'
+import { Checkbox } from '~/components/ui/checkbox'
+import { NO_VALUE, Select, type SelectOption } from '~/components/ui/select'
 
 export type Result<T> = { ok: true; value: T } | { ok: false; errors: Record<string, string> }
 type Options = readonly (readonly [string, string])[]
@@ -40,23 +45,39 @@ export function FieldShell({ label, hint, error, className, children }: {
 
 type TextFieldProps = { label: string; hint?: string; className?: string } & Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
-  'name' | 'value' | 'defaultValue' | 'onChange' | 'onBlur'
->
+  'name' | 'value' | 'defaultValue' | 'onChange' | 'onBlur' | 'className' | 'style'
+> & { style?: React.CSSProperties }
 
-function TextField({ label, hint, className, ...input }: TextFieldProps) {
+// Form fields are React Aria components. Validation comes from the Zod schema
+// and the server, so React Aria only shows the error (validationBehavior="aria",
+// no native browser validation).
+
+function FieldLabel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <Label>
+      <span>{label} {hint && <span className="hint">{hint}</span>}</span>
+    </Label>
+  )
+}
+
+function TextField({ label, hint, className, required, ...input }: TextFieldProps) {
   const field = useFieldContext<string>()
   const error = useFieldError()
   return (
-    <FieldShell label={label} hint={hint} error={error} className={className}>
-      <input
-        {...input}
-        name={field.name}
-        value={field.state.value}
-        onChange={(e) => field.handleChange(e.target.value)}
-        onBlur={field.handleBlur}
-        aria-invalid={!!error}
-      />
-    </FieldShell>
+    <AriaTextField
+      name={field.name}
+      value={field.state.value}
+      onChange={field.handleChange}
+      onBlur={field.handleBlur}
+      isInvalid={!!error}
+      isRequired={required}
+      validationBehavior="aria"
+      className={`field ${className ?? ''}`}
+    >
+      <FieldLabel label={label} hint={hint} />
+      <Input {...input} />
+      {error && <FieldError className="field-error">{error}</FieldError>}
+    </AriaTextField>
   )
 }
 
@@ -64,20 +85,23 @@ function TextareaField({ label, hint, className, rows = 3 }: { label: string; hi
   const field = useFieldContext<string>()
   const error = useFieldError()
   return (
-    <FieldShell label={label} hint={hint} error={error} className={className}>
-      <textarea
-        name={field.name}
-        rows={rows}
-        value={field.state.value}
-        onChange={(e) => field.handleChange(e.target.value)}
-        onBlur={field.handleBlur}
-        aria-invalid={!!error}
-      />
-    </FieldShell>
+    <AriaTextField
+      name={field.name}
+      value={field.state.value}
+      onChange={field.handleChange}
+      onBlur={field.handleBlur}
+      isInvalid={!!error}
+      validationBehavior="aria"
+      className={`field ${className ?? ''}`}
+    >
+      <FieldLabel label={label} hint={hint} />
+      <TextArea rows={rows} />
+      {error && <FieldError className="field-error">{error}</FieldError>}
+    </AriaTextField>
   )
 }
 
-/** <select> with an optional empty choice; `options` are [value, label] pairs. */
+/** React Aria Select with an optional empty choice; `options` are [value, label] pairs. */
 function SelectField({ label, hint, className, options, emptyLabel = 'Select…', required }: {
   label: string
   hint?: string
@@ -92,71 +116,64 @@ function SelectField({ label, hint, className, options, emptyLabel = 'Select…'
   const value = field.state.value
   // Keep a stored value that is no longer offered (e.g. a deleted customer) selectable.
   const missing = value !== '' && !options.some(([v]) => v === value)
+  const choices: SelectOption[] = [
+    ...(emptyLabel !== null ? [[NO_VALUE, emptyLabel] as const] : []),
+    ...(missing ? [[value, value] as const] : []),
+    ...options,
+  ]
   return (
-    <FieldShell label={label} hint={hint} error={error} className={className}>
-      <select
-        name={field.name}
-        value={value}
-        onChange={(e) => field.handleChange(e.target.value)}
-        onBlur={field.handleBlur}
-        aria-invalid={!!error}
-        required={required}
-      >
-        {emptyLabel !== null && <option value="">{emptyLabel}</option>}
-        {missing && <option value={value}>{value}</option>}
-        {options.map(([v, text]) => (
-          <option key={v} value={v}>{text}</option>
-        ))}
-      </select>
-    </FieldShell>
+    <Select
+      label={label}
+      showLabel
+      hint={hint}
+      error={error}
+      value={value || NO_VALUE}
+      options={choices}
+      onChange={(id) => field.handleChange(id === NO_VALUE ? '' : id)}
+      onBlur={field.handleBlur}
+      isRequired={required}
+      className={className}
+    />
   )
 }
 
 function CheckboxField({ label, hint, className }: { label: string; hint?: string; className?: string }) {
   const field = useFieldContext<boolean>()
   return (
-    <label className={`check ${className ?? ''}`}>
-      <input
-        type="checkbox"
-        name={field.name}
-        checked={field.state.value}
-        onChange={(e) => field.handleChange(e.target.checked)}
-        onBlur={field.handleBlur}
-      />
-      <span>
-        {label} {hint && <span className="hint">{hint}</span>}
-      </span>
-    </label>
+    <Checkbox
+      name={field.name}
+      isSelected={field.state.value}
+      onChange={field.handleChange}
+      onBlur={field.handleBlur}
+      className={className}
+    >
+      {label} {hint && <span className="hint">{hint}</span>}
+    </Checkbox>
   )
 }
 
-/** Several checkboxes editing one string[] value. */
+/** Several checkboxes editing one string[] value (React Aria CheckboxGroup). */
 function CheckboxGroupField({ label, options, className }: { label: string; options: Options; className?: string }) {
   const field = useFieldContext<string[]>()
   const error = useFieldError()
-  const selected = field.state.value
   return (
-    <div role="group" aria-label={label} className={`check-group ${className ?? ''}`}>
-      <span className="group-label">{label}</span>
+    <CheckboxGroup
+      name={field.name}
+      value={field.state.value}
+      onChange={field.handleChange}
+      onBlur={field.handleBlur}
+      isInvalid={!!error}
+      validationBehavior="aria"
+      className={`check-group ${className ?? ''}`}
+    >
+      <Label className="group-label">{label}</Label>
       <div className="row wrap">
         {options.map(([value, text]) => (
-          <label key={value} className="check">
-            <input
-              type="checkbox"
-              name={field.name}
-              value={value}
-              checked={selected.includes(value)}
-              onChange={(e) =>
-                field.handleChange(e.target.checked ? [...selected, value] : selected.filter((s) => s !== value))
-              }
-              onBlur={field.handleBlur}
-            />
-            <span>{text}</span>
-          </label>
+          <Checkbox key={value} value={value}>{text}</Checkbox>
         ))}
       </div>
-      {error && <span className="field-error">{error}</span>}
-    </div>
+      {error && <FieldError className="field-error">{error}</FieldError>}
+    </CheckboxGroup>
   )
 }
 
@@ -164,9 +181,9 @@ function SubmitButton({ label }: { label: string }) {
   const form = useFormContext()
   const submitting = useStore(form.store, (s) => s.isSubmitting)
   return (
-    <button type="submit" disabled={submitting}>
+    <Button type="submit" isDisabled={submitting}>
       {submitting ? 'Saving…' : label}
-    </button>
+    </Button>
   )
 }
 
@@ -269,21 +286,20 @@ export function DeleteButton({ label, onConfirm }: { label: string; onConfirm: (
   const [armed, setArmed] = useState(false)
   const [busy, setBusy] = useState(false)
   if (!armed)
-    return <button type="button" className="ghost danger" onClick={() => setArmed(true)}>{label}</button>
+    return <Button className="ghost danger" onPress={() => setArmed(true)}>{label}</Button>
   return (
     <span className="row">
-      <button
-        type="button"
+      <Button
         className="danger"
-        disabled={busy}
-        onClick={async () => {
+        isDisabled={busy}
+        onPress={async () => {
           setBusy(true)
           try { await onConfirm() } finally { setBusy(false); setArmed(false) }
         }}
       >
         {busy ? 'Deleting…' : 'Confirm delete'}
-      </button>
-      <button type="button" className="ghost" onClick={() => setArmed(false)}>Cancel</button>
+      </Button>
+      <Button className="ghost" onPress={() => setArmed(false)}>Cancel</Button>
     </span>
   )
 }

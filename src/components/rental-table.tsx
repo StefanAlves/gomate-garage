@@ -1,4 +1,5 @@
-import { Link } from '@tanstack/react-router'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from 'react-aria-components/Table'
+import { Link } from '~/components/ui/link'
 import { formatDate, formatMoney, rentalStatusLabel } from '~/lib/format'
 import type { RentalWithSummary } from '~/server/rentals.server'
 
@@ -23,50 +24,48 @@ export function RentalStatusBadge({ status }: { status: RentalWithSummary['statu
 export function RentalTable({ rentals, hide }: { rentals: RentalWithSummary[]; hide?: 'customer' | 'car' }) {
   return (
     <div className="table-wrap">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {hide !== 'customer' && <th>Customer</th>}
-            {hide !== 'car' && <th>Car</th>}
-            <th>Started</th>
-            <th className="num">Weekly rent</th>
-            <th className="num">Owed</th>
-            <th className="hide-narrow">Next due</th>
-            <th>Status</th>
-            <th aria-label="Open" />
-          </tr>
-        </thead>
-        <tbody>
+      <Table className="data-table" aria-label="Rentals">
+        <TableHeader>
+            {hide !== 'customer' && <Column>Customer</Column>}
+            {hide !== 'car' && <Column>Car</Column>}
+            <Column>Started</Column>
+            <Column className="num">Weekly rent</Column>
+            <Column className="num">Owed</Column>
+            <Column className="hide-narrow">Next due</Column>
+            <Column>Status</Column>
+            <Column aria-label="Open" />
+          </TableHeader>
+        <TableBody>
           {rentals.map((r) => (
-            <tr key={r.id}>
+            <Row key={r.id} id={r.id}>
               {hide !== 'customer' && (
-                <td>
+                <Cell>
                   <Link to="/customers/$customerId" params={{ customerId: String(r.customerId) }} search={{ tab: 'rentals' }}>
                     {r.customerName}
                   </Link>
                   <div className="muted small">{r.customerPhone}</div>
-                </td>
+                </Cell>
               )}
               {hide !== 'car' && (
-                <td>
+                <Cell>
                   <Link to="/cars/$carId" params={{ carId: String(r.carId) }} search={{ tab: 'rentals' }}>
                     {r.carName} <span className="plate">{r.carPlate}</span>
                   </Link>
-                </td>
+                </Cell>
               )}
-              <td>
+              <Cell>
                 {formatDate(r.startDate)}
                 {r.returnedOn && <div className="muted small">to {formatDate(r.returnedOn)}</div>}
-              </td>
-              <td className="num">{formatMoney(r.weeklyCents)}</td>
-              <td className="num"><OwedCell rental={r} /></td>
-              <td className="hide-narrow">{r.nextDueOn ? formatDate(r.nextDueOn) : '—'}</td>
-              <td><RentalStatusBadge status={r.status} /></td>
-              <td><Link to="/rentals/$rentalId" params={{ rentalId: String(r.id) }} className="small">Open →</Link></td>
-            </tr>
+              </Cell>
+              <Cell className="num">{formatMoney(r.weeklyCents)}</Cell>
+              <Cell className="num"><OwedCell rental={r} /></Cell>
+              <Cell className="hide-narrow">{r.nextDueOn ? formatDate(r.nextDueOn) : '—'}</Cell>
+              <Cell><RentalStatusBadge status={r.status} /></Cell>
+              <Cell><Link to="/rentals/$rentalId" params={{ rentalId: String(r.id) }} className="small">Open →</Link></Cell>
+            </Row>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

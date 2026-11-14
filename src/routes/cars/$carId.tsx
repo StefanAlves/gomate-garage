@@ -1,4 +1,6 @@
-import { Link, createFileRoute, notFound, stripSearchParams, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, notFound, stripSearchParams, useNavigate, useRouter } from '@tanstack/react-router'
+import { Button } from 'react-aria-components/Button'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from 'react-aria-components/Table'
 import { useServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
 import { carTabSearchSchema, idSchema, type CAR_TABS } from '~/lib/schemas'
@@ -19,6 +21,7 @@ import { CarForm } from '~/components/car-form'
 import { StockForm } from '~/components/stock-form'
 import { DeleteButton, FormError } from '~/components/form'
 import { ComingSoon, DetailTabs } from '~/components/tabs'
+import { Link } from '~/components/ui/link'
 
 type TabKey = (typeof CAR_TABS)[number]
 
@@ -222,7 +225,7 @@ function MaintenanceTab() {
         <div className="row between wrap">
           <h2>Service interval</h2>
           {hasInterval && panel !== 'interval' && (
-            <button type="button" className="ghost" onClick={() => setPanel('interval')}>Change</button>
+            <Button className="ghost" onPress={() => setPanel('interval')}>Change</Button>
           )}
         </div>
         {panel === 'interval' || !hasInterval ? (
@@ -234,8 +237,8 @@ function MaintenanceTab() {
       </section>
 
       <div className="row wrap">
-        <button type="button" onClick={() => setPanel('reading')}>Add reading</button>
-        <button type="button" className="ghost" onClick={() => setPanel('service')}>Record service</button>
+        <Button onPress={() => setPanel('reading')}>Add reading</Button>
+        <Button className="ghost" onPress={() => setPanel('service')}>Record service</Button>
       </div>
       {panel === 'reading' && (
         <section className="panel stack">
@@ -258,27 +261,25 @@ function MaintenanceTab() {
             <p className="muted">No services recorded yet.</p>
           ) : (
             <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr><th>Date</th><th className="num">Km</th><th>Work</th><th className="num">Cost</th><th aria-label="Delete" /></tr>
-                </thead>
-                <tbody>
+              <Table className="data-table" aria-label="Services">
+                <TableHeader><Column>Date</Column><Column className="num">Km</Column><Column>Work</Column><Column className="num">Cost</Column><Column aria-label="Delete" /></TableHeader>
+                <TableBody>
                   {services.map((v) => (
-                    <tr key={v.id}>
-                      <td className="nowrap">{formatDate(v.servicedOn)}</td>
-                      <td className="num">{v.km.toLocaleString('en-AU')}</td>
-                      <td>{v.description}</td>
-                      <td className="num">{v.costCents ? formatMoney(v.costCents) : '—'}</td>
-                      <td>
+                    <Row key={v.id} id={v.id}>
+                      <Cell className="nowrap">{formatDate(v.servicedOn)}</Cell>
+                      <Cell className="num">{v.km.toLocaleString('en-AU')}</Cell>
+                      <Cell>{v.description}</Cell>
+                      <Cell className="num">{v.costCents ? formatMoney(v.costCents) : '—'}</Cell>
+                      <Cell>
                         <DeleteButton label="Delete" onConfirm={async () => {
                           await removeService({ data: { id: v.id } })
                           await done('Service deleted, with its reading and expense.')()
                         }} />
-                      </td>
-                    </tr>
+                      </Cell>
+                    </Row>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </section>
@@ -289,27 +290,25 @@ function MaintenanceTab() {
             <p className="muted">No readings yet. Add one whenever the renter sends a dashboard photo.</p>
           ) : (
             <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr><th>Date</th><th className="num">Km</th><th>From</th><th aria-label="Delete" /></tr>
-                </thead>
-                <tbody>
+              <Table className="data-table" aria-label="Odometer readings">
+                <TableHeader><Column>Date</Column><Column className="num">Km</Column><Column>From</Column><Column aria-label="Delete" /></TableHeader>
+                <TableBody>
                   {readings.map((r, i) => {
                     const prev = readings[i + 1]
                     const lower = prev && r.km < prev.km
                     return (
-                      <tr key={r.id}>
-                        <td className="nowrap">{formatDate(r.readOn)}</td>
-                        <td className={`num ${lower ? 'urgent' : ''}`} title={lower ? 'Lower than the reading before it (correction)' : undefined}>
-                          {r.km.toLocaleString('en-AU')}{prev && !lower && <div className="muted small">+{(r.km - prev.km).toLocaleString('en-AU')}</div>}
-                        </td>
-                        <td className="small">
+                      <Row key={r.id} id={r.id}>
+                        <Cell className="nowrap">{formatDate(r.readOn)}</Cell>
+                        <Cell className={`num ${lower ? 'urgent' : ''}`}>
+                          <span title={lower ? 'Lower than the reading before it (correction)' : undefined}>{r.km.toLocaleString('en-AU')}</span>{prev && !lower && <div className="muted small">+{(r.km - prev.km).toLocaleString('en-AU')}</div>}
+                        </Cell>
+                        <Cell className="small">
                           {r.serviceId ? 'Service' : r.rentalId ? (
                             <Link to="/rentals/$rentalId" params={{ rentalId: String(r.rentalId) }}>Rental</Link>
                           ) : <span className="muted">—</span>}
                           {r.note && <div className="muted">{r.note}</div>}
-                        </td>
-                        <td>
+                        </Cell>
+                        <Cell>
                           {!r.serviceId && (
                             <DeleteButton label="Delete" onConfirm={async () => {
                               const res = await removeReading({ data: { id: r.id } })
@@ -317,12 +316,12 @@ function MaintenanceTab() {
                               else setError(res.errors.form)
                             }} />
                           )}
-                        </td>
-                      </tr>
+                        </Cell>
+                      </Row>
                     )
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </section>
@@ -431,26 +430,24 @@ function ChargeList({ kind, charges }: { kind: 'fine' | 'toll'; charges: Charge[
         <p className="muted">No {fine ? 'fines' : 'tolls'} recorded for this car.</p>
       ) : (
         <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Date</th><th>Customer</th>{fine && <th>Offence</th>}<th className="hide-narrow">Notice #</th>
-                <th className="num">Amount</th><th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="data-table" aria-label={fine ? 'Fines' : 'Tolls'}>
+            <TableHeader>
+                <Column>Date</Column><Column>Customer</Column>{fine && <Column>Offence</Column>}<Column className="hide-narrow">Notice #</Column>
+                <Column className="num">Amount</Column><Column>Status</Column>
+              </TableHeader>
+            <TableBody>
               {charges.map((c) => (
-                <tr key={c.id}>
-                  <td>{formatDate(c.incurredOn)}</td>
-                  <td>{c.customerName ?? <span className="muted">Unknown</span>}</td>
-                  {fine && <td>{c.offenceType ?? '—'}</td>}
-                  <td className="hide-narrow">{c.noticeNumber ?? '—'}</td>
-                  <td className="num">{formatMoney(c.amountCents)}</td>
-                  <td><span className={`badge charge-${c.status}`}>{chargeStatusLabel[c.status]}</span></td>
-                </tr>
+                <Row key={c.id} id={c.id}>
+                  <Cell>{formatDate(c.incurredOn)}</Cell>
+                  <Cell>{c.customerName ?? <span className="muted">Unknown</span>}</Cell>
+                  {fine && <Cell>{c.offenceType ?? '—'}</Cell>}
+                  <Cell className="hide-narrow">{c.noticeNumber ?? '—'}</Cell>
+                  <Cell className="num">{formatMoney(c.amountCents)}</Cell>
+                  <Cell><span className={`badge charge-${c.status}`}>{chargeStatusLabel[c.status]}</span></Cell>
+                </Row>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           <p className="muted small table-foot">{charges.length} · {formatMoney(total)}</p>
         </div>
       )}
@@ -488,22 +485,20 @@ function MoneyTab() {
           <p className="muted">No money recorded for this car yet.</p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Date</th><th>Category</th><th className="num">Amount</th><th className="hide-narrow">Method</th><th className="hide-narrow">Notes</th></tr>
-              </thead>
-              <tbody>
+            <Table className="data-table" aria-label="Transactions">
+              <TableHeader><Column>Date</Column><Column>Category</Column><Column className="num">Amount</Column><Column className="hide-narrow">Method</Column><Column className="hide-narrow">Notes</Column></TableHeader>
+              <TableBody>
                 {transactions.map((t) => (
-                  <tr key={t.id}>
-                    <td>{formatDate(t.occurredOn)}</td>
-                    <td><span className={`category cat-${t.category}`}>{categoryLabel[t.category]}</span></td>
-                    <td className="num">{formatMoney(t.amountCents)}</td>
-                    <td className="hide-narrow">{t.method ? methodLabel[t.method] : '—'}</td>
-                    <td className="hide-narrow muted small">{t.notes}</td>
-                  </tr>
+                  <Row key={t.id} id={t.id}>
+                    <Cell>{formatDate(t.occurredOn)}</Cell>
+                    <Cell><span className={`category cat-${t.category}`}>{categoryLabel[t.category]}</span></Cell>
+                    <Cell className="num">{formatMoney(t.amountCents)}</Cell>
+                    <Cell className="hide-narrow">{t.method ? methodLabel[t.method] : '—'}</Cell>
+                    <Cell className="hide-narrow muted small">{t.notes}</Cell>
+                  </Row>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </section>

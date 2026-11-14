@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { PAGE_SIZES } from '~/lib/schemas'
 import { Link } from '~/components/ui/link'
 import { SearchField } from '~/components/ui/search-field'
-import { Select } from '~/components/ui/select'
+import { NO_VALUE, Select } from '~/components/ui/select'
 
 // The URL is the state for every list control: search, sort, filters, page.
 // Changing anything except the page resets to page 1.
@@ -30,9 +30,6 @@ export function SearchBox({ from, q, placeholder }: { from: ListRoute; q?: strin
   return <SearchField aria-label="Search" placeholder={placeholder} value={value} onChange={setValue} />
 }
 
-// React Aria option ids can't be empty, so "" (no filter) travels as this id.
-const NONE = '__none__'
-
 /** A React Aria Select bound to one search param. `options` are [value, label]; "" clears the param. */
 export function ParamSelect({
   from,
@@ -51,9 +48,9 @@ export function ParamSelect({
   return (
     <Select
       label={label}
-      value={value || NONE}
-      options={options.map(([v, text]) => [v || NONE, text] as const)}
-      onChange={(id) => setSearch({ [param]: id === NONE ? undefined : id })}
+      value={value || NO_VALUE}
+      options={options.map(([v, text]) => [v || NO_VALUE, text] as const)}
+      onChange={(id) => setSearch({ [param]: id === NO_VALUE ? undefined : id })}
     />
   )
 }
