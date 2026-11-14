@@ -1,5 +1,5 @@
 import {
-  CAR_PURPOSES, COLOURS, type CarPurpose, FUEL_TYPES, MANUAL_CAR_STATUSES, carInputSchema, newCarInputSchema, type CarValues, type NewCarValues,
+  CAR_PURPOSES, COLOURS, type CarPurpose, FUEL_TYPES, MANUAL_CAR_STATUSES, TRANSMISSIONS, carInputSchema, newCarInputSchema, type CarValues, type NewCarValues,
 } from '~/lib/schemas'
 import { carPurposeLabel, carStatusLabel, formatMonth, fuelLabel } from '~/lib/format'
 import { FormError, FormSection, useSchemaForm, type Result } from './form'
@@ -7,6 +7,7 @@ import { FormError, FormSection, useSchemaForm, type Result } from './form'
 const purposeOptions = CAR_PURPOSES.map((p) => [p, carPurposeLabel[p]] as const)
 const statusOptions = MANUAL_CAR_STATUSES.map((s) => [s, carStatusLabel[s]] as const)
 const colourOptions = COLOURS.map((c) => [c, c] as const)
+const transmissionOptions = TRANSMISSIONS.map((t) => [t, t] as const)
 const fuelOptions = FUEL_TYPES.map((f) => [f, fuelLabel[f]] as const)
 
 const str = (v: string | number | null | undefined) => (v == null ? '' : String(v))
@@ -107,7 +108,7 @@ export function CarForm({
           <form.AppField name="mileageKm">{(f) => <f.TextField label="Odometer (km)" type="number" inputMode="numeric" min={0} />}</form.AppField>
         )}
         <form.AppField name="fuelType">{(f) => <f.SelectField label="Fuel" options={fuelOptions} />}</form.AppField>
-        <form.AppField name="transmission">{(f) => <f.TextField label="Transmission" placeholder="e.g. Automatic" />}</form.AppField>
+        <form.AppField name="transmission">{(f) => <f.SegmentedField label="Transmission" options={transmissionOptions} />}</form.AppField>
       </FormSection>
 
       {!compact && (

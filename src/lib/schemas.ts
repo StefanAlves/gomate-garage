@@ -17,6 +17,8 @@ export const STATUSES_BY_PURPOSE = {
   sale: ['preparation', 'ready', 'under_finance', 'sold'],
 } as const satisfies Record<(typeof CAR_PURPOSES)[number], readonly (typeof CAR_STATUSES)[number][]>
 export const FUEL_TYPES = ['petrol', 'diesel', 'hybrid', 'electric'] as const
+/** Stored as these labels. The column is free text, so older values survive. */
+export const TRANSMISSIONS = ['Automatic', 'Manual'] as const
 export const COLOURS = [
   'White', 'Black', 'Silver', 'Grey', 'Red', 'Blue', 'Green', 'Yellow', 'Orange',
   'Brown', 'Gold', 'Beige', 'Maroon', 'Navy', 'Purple', 'Other',

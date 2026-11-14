@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { createFormHook, createFormHookContexts, revalidateLogic, useStore } from '@tanstack/react-form'
 import type { AnyFieldApi } from '@tanstack/react-form'
 import type { z } from 'zod'
 import { Button } from 'react-aria-components/Button'
 import { CheckboxGroup } from 'react-aria-components/CheckboxGroup'
+import { ToggleButton } from 'react-aria-components/ToggleButton'
+import { ToggleButtonGroup } from 'react-aria-components/ToggleButtonGroup'
 import { FieldError, Input, Label, TextArea, TextField as AriaTextField } from 'react-aria-components/TextField'
+import { css } from 'styled-system/css'
 import { fieldErrors } from '~/lib/schemas'
 import { Checkbox } from '~/components/ui/checkbox'
 import { NO_VALUE, Select, type SelectOption } from '~/components/ui/select'
@@ -177,6 +180,66 @@ function CheckboxGroupField({ label, options, className }: { label: string; opti
   )
 }
 
+const segmentedGroup = css({
+  display: 'inline-flex',
+  alignSelf: 'flex-start',
+  gap: '0.5',
+  p: '0.5',
+  bg: 'card',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+})
+
+const segmentedOption = css({
+  px: '3.5',
+  py: '1',
+  fontSize: 'sm',
+  fontWeight: 'medium',
+  color: 'muted.foreground',
+  bg: 'transparent',
+  border: 'none',
+  borderRadius: 'full',
+  cursor: 'pointer',
+  outline: 'none',
+  transition: 'background 150ms, color 150ms',
+  _hovered: { color: 'foreground' },
+  _selected: { bg: 'primary', color: 'primary.foreground', _hovered: { color: 'primary.foreground' } },
+  _focusVisible: { outline: '2px solid', outlineColor: 'ring', outlineOffset: '2px' },
+})
+
+/**
+ * A segmented switch for a short, fixed set of choices (React Aria
+ * ToggleButtonGroup, single selection). Pressing the selected choice again
+ * clears it. A stored value matches its option case-insensitively.
+ */
+function SegmentedField({ label, hint, className, options }: { label: string; hint?: string; className?: string; options: Options }) {
+  const field = useFieldContext<string>()
+  const error = useFieldError()
+  const labelId = useId()
+  const current = options.find(([v]) => v.toLowerCase() === field.state.value.trim().toLowerCase())?.[0]
+  return (
+    <div className={`field ${className ?? ''}`}>
+      <span id={labelId}>{label} {hint && <span className="hint">{hint}</span>}</span>
+      <ToggleButtonGroup
+        aria-labelledby={labelId}
+        selectionMode="single"
+        selectedKeys={current ? [current] : []}
+        onSelectionChange={(keys) => {
+          const [next] = keys
+          field.handleChange(next == null ? '' : String(next))
+          field.handleBlur()
+        }}
+        className={segmentedGroup}
+      >
+        {options.map(([value, text]) => (
+          <ToggleButton key={value} id={value} className={segmentedOption}>{text}</ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+      {error && <span className="field-error">{error}</span>}
+    </div>
+  )
+}
+
 function SubmitButton({ label }: { label: string }) {
   const form = useFormContext()
   const submitting = useStore(form.store, (s) => s.isSubmitting)
@@ -190,7 +253,7 @@ function SubmitButton({ label }: { label: string }) {
 export const { useAppForm, withForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { TextField, TextareaField, SelectField, CheckboxField, CheckboxGroupField },
+  fieldComponents: { TextField, TextareaField, SelectField, SegmentedField, CheckboxField, CheckboxGroupField },
   formComponents: { SubmitButton },
 })
 
