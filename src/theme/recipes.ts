@@ -12,7 +12,7 @@ const focusRing = {
 // GoMate CTA: red pill with a soft red shadow; outline pill as secondary.
 export const button = defineRecipe({
   className: 'ui-button',
-  jsx: ['Button'],
+  jsx: ['Button', 'Link'],
   base: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -21,6 +21,8 @@ export const button = defineRecipe({
     fontFamily: 'sans',
     fontWeight: 'semibold',
     lineHeight: '1.5',
+    // Also styles <Link variant=…>; drop the browser's default link underline.
+    textDecoration: 'none',
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: 'transparent',

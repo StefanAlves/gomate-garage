@@ -48,7 +48,7 @@ function CarList() {
             </>
           )}
         </h1>
-        <Link to="/cars/new" className="button">New car</Link>
+        <Link to="/cars/new" variant="solid" size="sm">New car</Link>
       </div>
       <div className="row wrap">
         <SearchBox from="/cars/" q={q} placeholder="Search rego, make, model or VIN…" />

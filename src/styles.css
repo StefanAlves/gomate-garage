@@ -16,8 +16,8 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:not(.ui-button) { color: var(--accent); text-decoration: none; }
+a:not(.ui-button):hover { text-decoration: underline; }
 h1 { font-family: var(--fonts-display); font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em; line-height: 1.05; font-size: 1.6rem; margin: 0; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .9em; }
