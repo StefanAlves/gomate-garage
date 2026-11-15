@@ -3,13 +3,18 @@ import { Button } from 'react-aria-components/Button'
 import { Cell, Column, Row, Table, TableBody, TableHeader } from 'react-aria-components/Table'
 import { useServerFn } from '@tanstack/react-start'
 import { useState } from 'react'
-import { carTabSearchSchema, idSchema, type CAR_TABS } from '~/lib/schemas'
+import { carTabSearchSchema, idSchema, type CAR_TABS, type TransactionCategory } from '~/lib/schemas'
+import { garageToday } from '~/lib/period'
 import {
   carName, carPurposeLabel, carStatusLabel, categoryLabel, chargeStatusLabel, formatDate, formatKm, formatMoney,
   formatMoneyShort, formatPercent, formatSigned, methodLabel,
 } from '~/lib/format'
 import { deleteCar, getCar, updateCar } from '~/server/garage.functions'
-import { getCarFleetRecords, updateCarStock } from '~/server/fleet.functions'
+import {
+  createTransaction, deleteTransaction, getCarFleetRecords, listPickerOptions, updateCarStock, updateTransaction,
+} from '~/server/fleet.functions'
+import type { Transaction } from '~/server/transactions.server'
+import { TransactionForm } from '~/components/transaction-form'
 import { rentalsForCar } from '~/server/rentals.functions'
 import { financeSalesForCar } from '~/server/finance.functions'
 import { deleteReading, deleteService, getMaintenance } from '~/server/maintenance.functions'
@@ -31,14 +36,15 @@ export const Route = createFileRoute('/cars/$carId')({
   loader: async ({ params }) => {
     const parsed = idSchema.safeParse({ id: params.carId })
     if (!parsed.success) throw notFound()
-    const [car, records, rentals, sales, maintenance] = await Promise.all([
+    const [car, records, rentals, sales, maintenance, options] = await Promise.all([
       getCar({ data: parsed.data }),
       getCarFleetRecords({ data: parsed.data }),
       rentalsForCar({ data: parsed.data }),
       financeSalesForCar({ data: parsed.data }),
       getMaintenance({ data: parsed.data }),
+      listPickerOptions(),
     ])
-    return { car, records, rentals, sales, maintenance }
+    return { car, records, rentals, sales, maintenance, options, today: garageToday() }
   },
   head: ({ loaderData }) => ({ meta: [{ title: `${loaderData?.car.plate ?? 'Car'} · Garage` }] }),
   component: CarPage,
@@ -455,9 +461,20 @@ function ChargeList({ kind, charges }: { kind: 'fine' | 'toll'; charges: Charge[
   )
 }
 
+type TransactionPanel = { mode: 'new'; category?: TransactionCategory } | { mode: 'edit'; tx: Transaction } | null
+
 function MoneyTab() {
-  const { car, records } = Route.useLoaderData()
+  const { car, records, options, today } = Route.useLoaderData()
   const { totals, transactions } = records
+  const router = useRouter()
+  const create = useServerFn(createTransaction)
+  const update = useServerFn(updateTransaction)
+  const remove = useServerFn(deleteTransaction)
+  const [editing, setEditing] = useState<TransactionPanel>(null)
+  const done = async () => {
+    setEditing(null)
+    await router.invalidate()
+  }
   const tiles = [
     ['Invested', formatMoneyShort(totals.investedCents)],
     ['Expenses', formatMoneyShort(totals.expensesCents)],
@@ -479,14 +496,32 @@ function MoneyTab() {
       <section className="panel stack">
         <div className="row between wrap">
           <h2>Transactions</h2>
-          <Link to="/fleet/transactions" search={{ car: car.id }} className="button ghost">Add or edit in Transactions</Link>
+          <div className="row wrap">
+            <Button onPress={() => setEditing({ mode: 'new' })}>Add transaction</Button>
+            <Button className="ghost" onPress={() => setEditing({ mode: 'new', category: 'bond_received' })}>Add bond</Button>
+          </div>
         </div>
+        {editing && (
+          <div className="stack">
+            <h3>{editing.mode === 'new' ? (editing.category === 'bond_received' ? 'Add bond' : 'Add transaction') : 'Edit transaction'}</h3>
+            <TransactionForm
+              key={editing.mode === 'new' ? `new-${editing.category ?? ''}` : editing.tx.id}
+              options={options}
+              today={today}
+              initial={editing.mode === 'edit' ? editing.tx : undefined}
+              defaults={editing.mode === 'new' ? { category: editing.category, carId: car.id } : undefined}
+              onSubmit={(values) => (editing.mode === 'new' ? create({ data: values }) : update({ data: { id: editing.tx.id, values } }))}
+              onSuccess={done}
+              onCancel={() => setEditing(null)}
+            />
+          </div>
+        )}
         {transactions.length === 0 ? (
           <p className="muted">No money recorded for this car yet.</p>
         ) : (
           <div className="table-wrap">
             <Table className="data-table" aria-label="Transactions">
-              <TableHeader><Column>Date</Column><Column>Category</Column><Column className="num">Amount</Column><Column className="hide-narrow">Method</Column><Column className="hide-narrow">Notes</Column></TableHeader>
+              <TableHeader><Column>Date</Column><Column>Category</Column><Column className="num">Amount</Column><Column className="hide-narrow">Method</Column><Column className="hide-narrow">Notes</Column><Column aria-label="Actions" /></TableHeader>
               <TableBody>
                 {transactions.map((t) => (
                   <Row key={t.id} id={t.id}>
@@ -495,6 +530,14 @@ function MoneyTab() {
                     <Cell className="num">{formatMoney(t.amountCents)}</Cell>
                     <Cell className="hide-narrow">{t.method ? methodLabel[t.method] : '—'}</Cell>
                     <Cell className="hide-narrow muted small">{t.notes}</Cell>
+                    <Cell className="row tight">
+                      <Button className="ghost small" onPress={() => setEditing({ mode: 'edit', tx: t })}>Edit</Button>
+                      <DeleteButton label="Delete" onConfirm={async () => {
+                        await remove({ data: { id: t.id } })
+                        if (editing?.mode === 'edit' && editing.tx.id === t.id) setEditing(null)
+                        await router.invalidate()
+                      }} />
+                    </Cell>
                   </Row>
                 ))}
               </TableBody>
