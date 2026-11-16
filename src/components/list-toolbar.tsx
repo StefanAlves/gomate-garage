@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PAGE_SIZES } from '~/lib/schemas'
 import { Link } from '~/components/ui/link'
 import { SearchField } from '~/components/ui/search-field'
@@ -17,16 +17,42 @@ export function useSetSearch(from: ListRoute) {
     navigate({ search: ((prev: Params) => ({ ...prev, page: undefined, ...patch })) as never, replace: true })
 }
 
-/** Debounced search box that writes `q` to the URL. */
+const SEARCH_DELAY_MS = 400
+
+/**
+ * Debounced search box that writes `q` to the URL. The URL only catches up
+ * once the new results have loaded, by which time staff may have typed more,
+ * so the box ignores `q` values it sent itself and follows only changes made
+ * elsewhere (back button, a link that clears the search).
+ */
 export function SearchBox({ from, q, placeholder }: { from: ListRoute; q?: string; placeholder: string }) {
   const setSearch = useSetSearch(from)
   const [value, setValue] = useState(q ?? '')
-  useEffect(() => setValue(q ?? ''), [q])
+  const wanted = useRef(q ?? '') // what the URL should end up holding
+  const sent = useRef<string[]>([]) // values sent to the URL that haven't come back yet
+
   useEffect(() => {
-    if ((q ?? '') === value) return
-    const t = setTimeout(() => setSearch({ q: value || undefined }), 250)
+    const incoming = q ?? ''
+    const echo = sent.current.indexOf(incoming)
+    if (echo >= 0) {
+      sent.current = sent.current.slice(echo + 1) // our own earlier value: keep what's typed
+      return
+    }
+    sent.current = []
+    wanted.current = incoming
+    setValue(incoming)
+  }, [q])
+
+  useEffect(() => {
+    if (value === wanted.current) return
+    const t = setTimeout(() => {
+      wanted.current = value
+      sent.current.push(value)
+      setSearch({ q: value || undefined })
+    }, SEARCH_DELAY_MS)
     return () => clearTimeout(t)
-  }, [value, q]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return <SearchField aria-label="Search" placeholder={placeholder} value={value} onChange={setValue} />
 }
 
