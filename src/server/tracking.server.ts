@@ -1,6 +1,6 @@
 import '@tanstack/react-start/server-only'
 import type { CarPurpose, CarStatus } from '~/lib/schemas'
-import { matchTrackers, type CarTracker, type TrackerDevice, type TrackerPosition } from '~/lib/tracking'
+import { GT06_PORT, matchTrackers, type CarTracker, type TrackerDevice, type TrackerPosition, type TrackerServer } from '~/lib/tracking'
 import { db } from './db.server'
 
 // GPS tracking through a Traccar server (https://www.traccar.org). The trackers
@@ -23,6 +23,23 @@ export function traccarConfig(env: NodeJS.ProcessEnv = process.env): TraccarConf
   if (env.TRACCAR_EMAIL && env.TRACCAR_PASSWORD)
     return { url, authorization: `Basic ${Buffer.from(`${env.TRACCAR_EMAIL}:${env.TRACCAR_PASSWORD}`).toString('base64')}` }
   return null
+}
+
+/**
+ * Where trackers report, for the setup steps the app shows: TRACCAR_URL's host
+ * on the GT06 port, unless TRACCAR_DEVICE_HOST / TRACCAR_DEVICE_PORT say otherwise.
+ */
+export function trackerServer(env: NodeJS.ProcessEnv = process.env): TrackerServer | null {
+  let host = env.TRACCAR_DEVICE_HOST?.trim()
+  if (!host && env.TRACCAR_URL) {
+    try {
+      host = new URL(env.TRACCAR_URL.trim()).hostname
+    } catch {
+      host = undefined
+    }
+  }
+  if (!host) return null
+  return { host, port: Number(env.TRACCAR_DEVICE_PORT) || GT06_PORT }
 }
 
 /** A Traccar problem worded for staff (the page shows the message). */
@@ -58,7 +75,8 @@ export async function fetchTrackers(config: TraccarConfig, fetchImpl: typeof fet
       id, deviceId, latitude, longitude, speed, course, fixTime, address: address ?? null,
       attributes: {
         ignition: attributes?.ignition, motion: attributes?.motion,
-        batteryLevel: attributes?.batteryLevel, totalDistance: attributes?.totalDistance,
+        batteryLevel: attributes?.batteryLevel, power: attributes?.power,
+        totalDistance: attributes?.totalDistance,
       },
     })),
   }
@@ -81,7 +99,7 @@ export type CarLocation = TrackedCar & { tracker: CarTracker | null }
 export type FleetLocations =
   | { status: 'not_configured' }
   | { status: 'error'; message: string }
-  | { status: 'ok'; checkedAt: string; cars: CarLocation[]; unmatched: TrackerDevice[] }
+  | { status: 'ok'; checkedAt: string; cars: CarLocation[]; unmatched: TrackerDevice[]; trackerServer: TrackerServer | null }
 
 /** Every car, with the customer it's out with (active rental or finance sale). */
 export function trackedCars() {
@@ -119,5 +137,6 @@ export async function fleetLocations(
     checkedAt: now.toISOString(),
     cars: cars.filter((c) => carId == null || c.id === carId).map((c) => ({ ...c, tracker: byCar.get(c.id) ?? null })),
     unmatched,
+    trackerServer: trackerServer(env),
   }
 }

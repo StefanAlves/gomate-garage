@@ -4,7 +4,7 @@ import { carName } from '~/lib/format'
 import { locationState } from '~/lib/tracking'
 import { getFleetLocations } from '~/server/tracking.functions'
 import { FleetMap } from '~/components/fleet-map'
-import { LocationBadge, REFRESH_MS, TrackingUnavailable, fixSummary, pinFor } from '~/components/tracking'
+import { LocationBadge, REFRESH_MS, TrackerSetupSteps, TrackingUnavailable, fixSummary, pinFor } from '~/components/tracking'
 import { Link } from '~/components/ui/link'
 
 export const Route = createFileRoute('/fleet/map')({
@@ -92,6 +92,10 @@ function FleetMapPage() {
               </Link>
             ))}
           </div>
+          <details>
+            <summary className="small">How to add a tracker</summary>
+            <TrackerSetupSteps server={data.trackerServer} />
+          </details>
         </section>
       )}
 

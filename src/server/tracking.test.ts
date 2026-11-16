@@ -4,7 +4,7 @@ import { db } from './db.server'
 import { insertCar } from './cars.server'
 import { insertCustomer } from './customers.server'
 import { startRental } from './rentals.server'
-import { fleetLocations, traccarConfig } from './tracking.server'
+import { fleetLocations, traccarConfig, trackerServer } from './tracking.server'
 
 const env = { TRACCAR_URL: 'https://traccar.test/', TRACCAR_TOKEN: 'secret' }
 const now = new Date('2026-11-16T10:00:00Z')
@@ -44,6 +44,15 @@ describe('Traccar settings', () => {
     expect(traccarConfig(env)).toEqual({ url: 'https://traccar.test', authorization: 'Bearer secret' })
     expect(traccarConfig({ TRACCAR_URL: 'https://t.test', TRACCAR_EMAIL: 'a@b.c', TRACCAR_PASSWORD: 'pw' })?.authorization)
       .toBe(`Basic ${btoa('a@b.c:pw')}`)
+  })
+})
+
+describe('where trackers report', () => {
+  it("is the Traccar URL's host on the GT06 port, unless set separately", () => {
+    expect(trackerServer({ TRACCAR_URL: 'http://65.108.88.119:8082' })).toEqual({ host: '65.108.88.119', port: 5023 })
+    expect(trackerServer({ TRACCAR_URL: 'https://web.test', TRACCAR_DEVICE_HOST: '10.0.0.1', TRACCAR_DEVICE_PORT: '5013' }))
+      .toEqual({ host: '10.0.0.1', port: 5013 })
+    expect(trackerServer({})).toBeNull()
   })
 })
 

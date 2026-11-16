@@ -25,7 +25,15 @@ export interface TrackerPosition {
   course: number
   fixTime: string
   address: string | null
-  attributes: { ignition?: boolean; motion?: boolean; batteryLevel?: number; totalDistance?: number }
+  attributes: {
+    ignition?: boolean
+    motion?: boolean
+    /** Tracker's own backup battery, percent (battery-powered trackers). */
+    batteryLevel?: number
+    /** Car battery voltage (hardwired trackers such as the Jimi VL110C). */
+    power?: number
+    totalDistance?: number
+  }
 }
 
 export interface CarTracker {
@@ -87,3 +95,28 @@ export function formatAgo(iso: string, now: Date) {
 
 export const mapsUrl = (p: Pick<TrackerPosition, 'latitude' | 'longitude'>) =>
   `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`
+
+// ── Setting up a tracker ──
+
+/** Where trackers send their positions (not the web address staff open). */
+export interface TrackerServer {
+  host: string
+  port: number
+}
+
+/** Traccar's GT06 port: Jimi IoT VL110C and other Concox trackers. */
+export const GT06_PORT = 5023
+
+/** Common Australian SIM APNs, for the setup texts. */
+export const SIM_APNS = [
+  { carrier: 'Telstra (also Boost)', apn: 'telstra.internet' },
+  { carrier: 'Optus', apn: 'yesinternet' },
+  { carrier: 'Vodafone', apn: 'live.vodafone.com' },
+] as const
+
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/
+
+/** The texts that point a GT06-style tracker (e.g. VL110C) at Traccar. SERVER,0 takes an IP, SERVER,1 a domain. */
+export function trackerSmsCommands({ host, port }: TrackerServer, apn = '<APN>') {
+  return [`APN,${apn}#`, `SERVER,${IPV4.test(host) ? 0 : 1},${host},${port},0#`]
+}

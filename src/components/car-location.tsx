@@ -4,7 +4,7 @@ import { formatAgo, locationState, mapsUrl, speedKmh } from '~/lib/tracking'
 import { getCarLocation } from '~/server/tracking.functions'
 import type { FleetLocations } from '~/server/tracking.server'
 import { FleetMap } from './fleet-map'
-import { LocationBadge, REFRESH_MS, TrackingUnavailable, pinFor } from './tracking'
+import { LocationBadge, REFRESH_MS, TrackerSetupSteps, TrackingUnavailable, pinFor } from './tracking'
 
 const localTime = new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -47,10 +47,8 @@ export function CarLocationTab({ carId }: { carId: number }) {
     return (
       <section className="panel stack">
         <h2>Location</h2>
-        <p className="muted">
-          No tracker is linked to this car. In Traccar, name the car's tracker <span className="plate">{car?.plate}</span> (its
-          rego) and its location shows up here within a minute.
-        </p>
+        <p className="muted">No tracker is linked to this car. To add one:</p>
+        <TrackerSetupSteps plate={car?.plate} server={data.trackerServer} />
       </section>
     )
 
@@ -94,6 +92,12 @@ export function CarLocationTab({ carId }: { carId: number }) {
               <>
                 <dt>Ignition</dt>
                 <dd>{p.attributes.ignition ? 'On' : 'Off'}</dd>
+              </>
+            )}
+            {p.attributes.power != null && (
+              <>
+                <dt>Car battery</dt>
+                <dd>{p.attributes.power.toFixed(1)} V</dd>
               </>
             )}
             {p.attributes.batteryLevel != null && (
