@@ -7,6 +7,7 @@ export const Route = createFileRoute('/fleet')({ component: FleetLayout })
 const links = [
   { to: '/fleet', label: 'Overview', exact: true },
   { to: '/fleet/stock', label: 'Stock' },
+  { to: '/fleet/map', label: 'Map' },
   { to: '/fleet/rentals', label: 'Rentals' },
   { to: '/fleet/sales', label: 'Finance sales' },
   { to: '/fleet/maintenance', label: 'Maintenance' },

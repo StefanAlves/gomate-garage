@@ -313,3 +313,23 @@ main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity
 .section-cards .form-section + .form-section { border-top: 1px solid var(--border); padding-top: 1.25rem; }
 /* Same look as the h2 titles of the page's other cards (e.g. Compliance). */
 .section-cards .form-section legend { font-size: 1.05rem; }
+
+/* GPS tracking: fleet map, pins and location states. */
+.loc-moving { --status: #1d5fbf; }
+.loc-parked { --status: #128c4a; }
+.loc-stale { --status: #6b7280; }
+.loc-no_fix { --status: #6b7280; }
+.badge[class*='loc-'] { color: var(--status); }
+.map { width: 100%; border: 1px solid var(--border); border-radius: var(--radii-lg); background: var(--bg); isolation: isolate; z-index: 0; }
+.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .map-layout { grid-template-columns: minmax(0, 1fr); } }
+.map-list { max-height: 480px; overflow-y: auto; }
+.map-list-item { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: .2rem; padding: .5rem .6rem; border-radius: var(--radii-md); cursor: pointer; }
+.map-list-item:hover:not(:disabled) { background: var(--bg); }
+.map-list-item:focus-visible { outline: 2px solid var(--accent); }
+.map-list-item:disabled { cursor: default; }
+.map-pin-icon { display: flex; align-items: flex-end; justify-content: center; background: none; border: 0; }
+.map-pin { position: relative; padding: .1rem .45rem; border-radius: 6px; background: var(--status); color: #fff; font: 600 .75rem/1.4 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: .04em; white-space: nowrap; box-shadow: 0 1px 3px rgb(0 0 0 / .35); }
+.map-pin::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--status); }
+a.plate { color: var(--text); }
+.map-popup { display: flex; flex-direction: column; gap: .15rem; font: .85rem/1.4 var(--fonts-sans); }
