@@ -96,6 +96,12 @@ export function CarLocationTab({ carId }: { carId: number }) {
                 <dd>{p.attributes.ignition ? 'On' : 'Off'}</dd>
               </>
             )}
+            {p.attributes.power != null && (
+              <>
+                <dt>Car battery</dt>
+                <dd>{p.attributes.power.toFixed(1)} V</dd>
+              </>
+            )}
             {p.attributes.batteryLevel != null && (
               <>
                 <dt>Tracker battery</dt>

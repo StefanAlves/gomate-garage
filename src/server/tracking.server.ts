@@ -58,7 +58,8 @@ export async function fetchTrackers(config: TraccarConfig, fetchImpl: typeof fet
       id, deviceId, latitude, longitude, speed, course, fixTime, address: address ?? null,
       attributes: {
         ignition: attributes?.ignition, motion: attributes?.motion,
-        batteryLevel: attributes?.batteryLevel, totalDistance: attributes?.totalDistance,
+        batteryLevel: attributes?.batteryLevel, power: attributes?.power,
+        totalDistance: attributes?.totalDistance,
       },
     })),
   }

@@ -25,7 +25,15 @@ export interface TrackerPosition {
   course: number
   fixTime: string
   address: string | null
-  attributes: { ignition?: boolean; motion?: boolean; batteryLevel?: number; totalDistance?: number }
+  attributes: {
+    ignition?: boolean
+    motion?: boolean
+    /** Tracker's own backup battery, percent (battery-powered trackers). */
+    batteryLevel?: number
+    /** Car battery voltage (hardwired trackers such as the Jimi VL110C). */
+    power?: number
+    totalDistance?: number
+  }
 }
 
 export interface CarTracker {

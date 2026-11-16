@@ -46,6 +46,16 @@ Car locations come from a [Traccar](https://www.traccar.org) server (open source
 
 Without them, the map and Location tab say tracking isn't set up; nothing else changes. **A tracker belongs to the car whose rego is the tracker's name in Traccar** (or its identifier); case, spaces and dashes are ignored. Trackers that match no car are listed under the fleet map.
 
+**Jimi IoT VL110C** (hardwired 4G tracker): in Traccar, add a device with the tracker's IMEI as its identifier and the car's rego as its name. It speaks the GT06 protocol, so it reports to Traccar's port **5023**; use the server address your Traccar account gives you. Set it up by SMS to the tracker's SIM:
+
+```
+APN,<your carrier's APN>#
+SERVER,1,<traccar server address>,5023,0#
+TIMER,30,300#        (report every 30 s driving, 300 s parked; check your model's manual)
+```
+
+Wire ACC to the ignition so the app can show Ignition on/off. The Location tab also shows the car's battery voltage, which this tracker reports.
+
 To try it without hardware: make an account on a Traccar demo server, install the **Traccar Client** phone app, add the phone as a device named after a car's rego, and point the app at the same server.
 
 ### Sign-in
