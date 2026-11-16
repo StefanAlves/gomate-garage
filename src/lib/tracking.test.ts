@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAgo, locationState, matchTrackers, normalizePlate, type TrackerDevice, type TrackerPosition } from './tracking'
+import { formatAgo, locationState, matchTrackers, normalizePlate, trackerSmsCommands, type TrackerDevice, type TrackerPosition } from './tracking'
 
 const now = new Date('2026-11-16T10:00:00Z')
 
@@ -60,5 +60,13 @@ describe('time since the last fix', () => {
     expect(formatAgo('2026-11-16T09:55:00Z', now)).toBe('5 min ago')
     expect(formatAgo('2026-11-16T07:00:00Z', now)).toBe('3 h ago')
     expect(formatAgo('2026-11-13T10:00:00Z', now)).toBe('3 days ago')
+  })
+})
+
+describe('tracker setup texts', () => {
+  it('uses SERVER,0 for an IP address and SERVER,1 for a domain', () => {
+    expect(trackerSmsCommands({ host: '65.108.88.119', port: 5023 }, 'telstra.internet'))
+      .toEqual(['APN,telstra.internet#', 'SERVER,0,65.108.88.119,5023,0#'])
+    expect(trackerSmsCommands({ host: 'traccar.example.com', port: 5023 })[1]).toBe('SERVER,1,traccar.example.com,5023,0#')
   })
 })

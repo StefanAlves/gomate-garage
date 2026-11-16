@@ -333,3 +333,8 @@ main[aria-busy='true'] :is(.table-wrap, .list, .board, .tiles, .panel) { opacity
 .map-pin::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--status); }
 a.plate { color: var(--text); }
 .map-popup { display: flex; flex-direction: column; gap: .15rem; font: .85rem/1.4 var(--fonts-sans); }
+.setup-steps { margin: 0; padding-left: 1.3rem; }
+.setup-steps li { line-height: 1.5; }
+.setup-steps .sms { margin: .4rem 0; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .9em; user-select: all; white-space: pre-wrap; overflow-wrap: anywhere; }
+.setup-steps .sms em { font-style: normal; color: var(--muted); }
+details > summary { cursor: pointer; }

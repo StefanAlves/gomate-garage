@@ -1,5 +1,8 @@
 import { carName } from '~/lib/format'
-import { formatAgo, locationState, locationStateLabel, speedKmh, type CarTracker, type LocationState } from '~/lib/tracking'
+import {
+  SIM_APNS, formatAgo, locationState, locationStateLabel, speedKmh, trackerSmsCommands,
+  type CarTracker, type LocationState, type TrackerServer,
+} from '~/lib/tracking'
 import type { CarLocation } from '~/server/tracking.server'
 import type { MapPin } from './fleet-map'
 
@@ -53,5 +56,40 @@ export function TrackingUnavailable({ status, message }: { status: 'not_configur
         rego. See the README's "GPS tracking" section.
       </p>
     </section>
+  )
+}
+
+/**
+ * How to fit a tracker (Jimi IoT VL110C or another GT06-style one) and link it
+ * to a car, filled in with the car's rego and this app's Traccar server.
+ */
+export function TrackerSetupSteps({ plate, server }: { plate?: string; server: TrackerServer | null }) {
+  const [, serverText] = trackerSmsCommands(server ?? { host: '<server address>', port: 5023 })
+  return (
+    <ol className="setup-steps stack tight">
+      <li>
+        In Traccar, add a device: <strong>Name</strong> {plate ? <span className="plate">{plate}</span> : "the car's rego"},{' '}
+        <strong>Identifier</strong> the IMEI on the tracker's label.
+      </li>
+      <li>Put a data SIM (no PIN lock) in the tracker and wire ACC to the ignition.</li>
+      <li>
+        Text the tracker's SIM number these two messages, one at a time (it texts back after each):
+        <pre className="sms">APN,<em>{'<carrier APN>'}</em>#{'\n'}{serverText}</pre>
+        <span className="muted small">
+          APN is the SIM carrier's:{' '}
+          {SIM_APNS.map((a, i) => (
+            <span key={a.apn}>
+              {i > 0 && ', '}
+              {a.carrier} <code>{a.apn}</code>
+            </span>
+          ))}
+          . Use the carrier's own APN for other brands.
+        </span>
+      </li>
+      <li>
+        It goes Online in Traccar within a few minutes; the first position needs open sky. It then shows here and on the fleet map.
+        If it stays offline, text <code>STATUS#</code> to check signal and server connection.
+      </li>
+    </ol>
   )
 }

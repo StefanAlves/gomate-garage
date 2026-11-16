@@ -43,6 +43,7 @@ Car locations come from a [Traccar](https://www.traccar.org) server (open source
 |---|---|
 | `TRACCAR_URL` | e.g. `https://demo.traccar.org` |
 | `TRACCAR_TOKEN` | API token from the Traccar user's settings, **or** `TRACCAR_EMAIL` + `TRACCAR_PASSWORD` |
+| `TRACCAR_DEVICE_HOST`, `TRACCAR_DEVICE_PORT` | Optional: where trackers report, shown in the app's setup steps. Default: `TRACCAR_URL`'s host, port 5023 |
 
 Without them, the map and Location tab say tracking isn't set up; nothing else changes. **A tracker belongs to the car whose rego is the tracker's name in Traccar** (or its identifier); case, spaces and dashes are ignored. Trackers that match no car are listed under the fleet map.
 
@@ -54,7 +55,7 @@ SERVER,1,<traccar server address>,5023,0#
 TIMER,30,300#        (report every 30 s driving, 300 s parked; check your model's manual)
 ```
 
-Wire ACC to the ignition so the app can show Ignition on/off. The Location tab also shows the car's battery voltage, which this tracker reports.
+Wire ACC to the ignition so the app can show Ignition on/off. The same steps, filled in with the car's rego and the server address, show on a car's Location tab when no tracker matches it, and under **How to add a tracker** on the fleet map. The Location tab also shows the car's battery voltage, which this tracker reports.
 
 To try it without hardware: make an account on a Traccar demo server, install the **Traccar Client** phone app, add the phone as a device named after a car's rego, and point the app at the same server.
 
