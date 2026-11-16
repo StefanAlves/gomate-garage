@@ -27,6 +27,7 @@ import { StockForm } from '~/components/stock-form'
 import { DeleteButton, FormError } from '~/components/form'
 import { ComingSoon, DetailTabs } from '~/components/tabs'
 import { Link } from '~/components/ui/link'
+import { CarLocationTab } from '~/components/car-location'
 
 type TabKey = (typeof CAR_TABS)[number]
 
@@ -107,6 +108,7 @@ function CarPage() {
           isRental
             ? { id: 'maintenance' as const, label: 'Maintenance' }
             : { id: 'history' as const, label: 'Vehicle history' },
+          { id: 'location', label: 'Location' },
           { id: 'fines', label: 'Fines', count: records.fines.length },
           { id: 'tolls', label: 'Tolls', count: records.tolls.length },
           { id: 'money', label: 'Money', count: records.transactions.length },
@@ -138,6 +140,8 @@ function CarPage() {
               return <MaintenanceTab />
             case 'history':
               return <ComingSoon title="Vehicle history">Every workshop booking for this car, newest first.</ComingSoon>
+            case 'location':
+              return <CarLocationTab carId={car.id} />
             case 'fines':
               return <ChargeList kind="fine" charges={records.fines} />
             case 'tolls':

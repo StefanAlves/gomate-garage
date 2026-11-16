@@ -496,7 +496,7 @@ export const overviewSearchSchema = z.object({ period: periodParam })
 export const CUSTOMER_TABS = ['contact', 'rentals', 'finance', 'bookings', 'invoices', 'comms'] as const
 export const customerTabSearchSchema = z.object({ tab: z.enum(CUSTOMER_TABS).default('contact').catch('contact') })
 
-export const CAR_TABS = ['specs', 'stock', 'rentals', 'finance', 'maintenance', 'history', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
+export const CAR_TABS = ['specs', 'stock', 'rentals', 'finance', 'maintenance', 'history', 'location', 'fines', 'tolls', 'money', 'reminders', 'invoices', 'log'] as const
 export const carTabSearchSchema = z.object({ tab: z.enum(CAR_TABS).default('specs').catch('specs') })
 
 /** Turn a ZodError into { field: message } for forms. */

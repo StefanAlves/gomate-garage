@@ -35,6 +35,19 @@ npm run staff -- disable ana@example.com         # blocks sign-in, signs them ou
 npm run import -- --from data/garage.db --yes    # one-off: copy a local file into an empty Turso database
 ```
 
+### GPS tracking
+
+Car locations come from a [Traccar](https://www.traccar.org) server (open source; self-hosted or Traccar's paid hosting). Trackers report to Traccar; the app reads each tracker's latest position from Traccar's REST API (`/api/devices`, `/api/positions`) when a page asks, and stores nothing. Settings (`.env` locally, Vercel environment variables in production):
+
+| Setting | |
+|---|---|
+| `TRACCAR_URL` | e.g. `https://demo.traccar.org` |
+| `TRACCAR_TOKEN` | API token from the Traccar user's settings, **or** `TRACCAR_EMAIL` + `TRACCAR_PASSWORD` |
+
+Without them, the map and Location tab say tracking isn't set up; nothing else changes. **A tracker belongs to the car whose rego is the tracker's name in Traccar** (or its identifier); case, spaces and dashes are ignored. Trackers that match no car are listed under the fleet map.
+
+To try it without hardware: make an account on a Traccar demo server, install the **Traccar Client** phone app, add the phone as a device named after a car's rego, and point the app at the same server.
+
 ### Sign-in
 
 There is no sign-up page; staff accounts are made with `npm run staff`. Sessions last 30 days and are stored in the database (only a hash of the cookie), so signing out, a password reset or disabling an account takes effect at once. Five wrong passwords in a row lock an account for 15 minutes. Server functions and form posts must come from the site itself (CSRF check). To sign in locally, add yourself to the local file: `DATABASE_PATH=data/garage.db npm run staff -- add you@example.com "Your Name"`.
@@ -50,8 +63,9 @@ Structure modelled on the GoMate back office (customers and vehicles).
 | `/customers/:id` | Tabs (`?tab=`): **Contact** (full profile: address, marketing opt-ins, preferred contact, tags, licence/passport), **Rentals** and **Finance sales** (active first, Start buttons), and placeholders for Bookings, Invoices, Comms |
 | `/cars` | Table: vehicle, rego, colour, purpose, status. Search (rego, make, model, VIN), sort, purpose and status filters, page size |
 | `/cars/new` | Quick create: purpose (Rental car or Sale car, fixed), status (Preparation or Ready), basic details |
-| `/cars/:id` | Purpose and status badges, Start rental / Start finance sale (Ready cars) or a link to the active rental or finance sale, maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (Preparation ↔ Ready, weekly rent or asking / minimum price by purpose, odometer for sale cars, description, features, compliance + financial summary), **Rentals** and **Maintenance** (rental cars: service interval, odometer readings, services) or **Finance** and a Vehicle history placeholder (sale cars), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Reminders, Invoices |
+| `/cars/:id` | Purpose and status badges, Start rental / Start finance sale (Ready cars) or a link to the active rental or finance sale, maintenance summary tiles + tabs: **Specifications** (full specs, maintenance tracking, rego/insurance/compliance), **Stock** (Preparation ↔ Ready, weekly rent or asking / minimum price by purpose, odometer for sale cars, description, features, compliance + financial summary), **Rentals** and **Maintenance** (rental cars: service interval, odometer readings, services) or **Finance** and a Vehicle history placeholder (sale cars), **Location** (the tracker's last position on a map, speed, ignition, address; loaded when the tab opens and refreshed every 30 s), **Fines**, **Tolls**, **Money** (ledger totals and entries), **Log**, and placeholders for Reminders, Invoices |
 | `/fleet` | Fleet overview (GoMate's "Cars" section): income / P&L / ROI tiles by period, cars per stock status, customers behind on rentals and finance sales, rental cars due for a service, unpaid fines & tolls, rego and insurance due in 30 days |
+| `/fleet/map` | Every tracked car on a map (OpenStreetMap), coloured Moving / Parked / Last seen (fix over an hour old), with a list beside it (click to zoom in), cars with no tracker, and trackers that match no car. Refreshes every 30 s |
 | `/fleet/stock` | Cars as a **board** (Preparation, Ready, Rented, Under finance, Sold) or a **table** with prices and per-car P&L. Filter by purpose (columns follow it), search, sort (longest in stock, highest value, rego) |
 | `/fleet/fines`, `/fleet/tolls` | Fines and tolls: date, rego, customer, (offence), notice #, amount, due date, status (Not paid, Transferred, Business paid, Paid by customer). Inline add / edit, filters, running total |
 | `/fleet/transactions` | Per-car money ledger: initial investment, expense, rental / sale income, bond received / returned / kept. Tiles, filters (period, vehicle, category, method), inline add / edit, "Add bond", CSV export |
